@@ -1,0 +1,8 @@
+# Saltos de línea LF en el repositorio para todos los ficheros de texto, sea cual sea la
+# configuración de Git de cada persona (PowerShell, Python e Inno Setup aceptan LF).
+* text=auto eol=lf
+
+*.exe binary
+*.zip binary
+*.png binary
+*.ico binary

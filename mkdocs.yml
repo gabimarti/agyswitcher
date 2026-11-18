@@ -1,0 +1,71 @@
+# Sitio web de AgySwitcher (MkDocs Material). Vista previa local: mkdocs serve
+site_name: AgySwitcher
+site_description: Varias cuentas de Google en Antigravity CLI (agy) sin perder el contexto del proyecto.
+site_author: Gabriel Marti
+site_url: https://gabimarti.github.io/agyswitcher/
+repo_url: https://github.com/gabimarti/agyswitcher
+repo_name: gabimarti/agyswitcher
+edit_uri: ""
+copyright: Copyright &copy; 2026 Gabriel Marti · GPL-3.0-or-later
+
+docs_dir: docs
+strict: true
+
+theme:
+  name: material
+  language: es
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - navigation.footer
+    - content.code.copy
+    - search.highlight
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: deep purple
+      toggle:
+        icon: material/weather-night
+        name: Modo oscuro
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: deep purple
+      toggle:
+        icon: material/weather-sunny
+        name: Modo claro
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.details
+  - pymdownx.tabbed:
+      alternate_style: true
+
+nav:
+  - Inicio: index.md
+  - Manual:
+      - manual/index.md
+      - Instalación: manual/instalacion.md
+      - Conceptos: manual/conceptos.md
+      - Comandos: manual/comandos.md
+      - Continuidad del proyecto: manual/continuidad.md
+      - Problemas frecuentes: manual/problemas.md
+      - Desinstalación: manual/desinstalacion.md
+  - Tutoriales:
+      - Proyecto nuevo: tutoriales/proyecto-nuevo.md
+      - Proyecto existente: tutoriales/proyecto-existente.md
+  - Desarrollo:
+      - Arquitectura: architecture.md
+      - Hoja de ruta: roadmap.md

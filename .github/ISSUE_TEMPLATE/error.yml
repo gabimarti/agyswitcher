@@ -1,0 +1,53 @@
+name: Informar de un error
+description: Algo no funciona como se espera.
+labels: ["error"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Gracias por avisar. **No pegues datos reales**: ni emails de tus cuentas, ni tokens,
+        ni rutas personales. Sustituye los emails por `cuenta@example.com`.
+        Si es un problema de seguridad, sigue SECURITY.md en lugar de abrir una issue.
+  - type: input
+    id: version
+    attributes:
+      label: Versión de AgySwitcher
+      description: Resultado de `agyswitcher --version`.
+      placeholder: "1.0.0 (compilación 3)"
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: Instalación
+      options:
+        - Instalador
+        - ZIP portable
+        - Código fuente
+    validations:
+      required: true
+  - type: input
+    id: windows
+    attributes:
+      label: Versión de Windows
+      placeholder: "Windows 11 23H2"
+  - type: textarea
+    id: steps
+    attributes:
+      label: Pasos para reproducirlo
+      placeholder: |
+        1. agyswitcher set-active trabajo
+        2. ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Qué esperabas y qué ocurrió
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: Salida de la consola (sin datos reales)
+      render: text

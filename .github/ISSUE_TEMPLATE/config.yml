@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Manual de AgySwitcher
+    url: https://github.com/gabimarti/agyswitcher/blob/main/docs/manual/index.md
+    about: Instalación, comandos y problemas frecuentes.
+  - name: Informar de un problema de seguridad
+    url: https://github.com/gabimarti/agyswitcher/security/policy
+    about: No abras una issue pública; sigue la política de seguridad.

@@ -1,0 +1,109 @@
+[project]
+name = "agyswitcher"
+dynamic = ["version"]
+description = "Gestor de cuentas y cuotas para Antigravity CLI (agy) en Windows"
+readme = "README.md"
+authors = [
+    { name = "Gabriel Marti", email = "contact@gabimarti.slmail.me" },
+]
+requires-python = ">=3.11"
+license = "GPL-3.0-or-later"
+license-files = ["LICENSE"]
+keywords = ["antigravity", "agy", "quota", "account-manager", "windows", "agents"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Natural Language :: Spanish",
+    "Operating System :: Microsoft :: Windows",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Software Development",
+    "Topic :: Utilities",
+]
+dependencies = [
+    "typer>=0.12",   # CLI ergonómico con autocompletado
+    "rich>=13",      # Output enriquecido y coloreado en Windows Terminal / PowerShell
+]
+
+[project.urls]
+Homepage = "https://github.com/gabimarti/agyswitcher"
+Documentation = "https://gabimarti.github.io/agyswitcher/"
+Issues = "https://github.com/gabimarti/agyswitcher/issues"
+Changelog = "https://github.com/gabimarti/agyswitcher/blob/main/CHANGELOG.md"
+
+[project.scripts]
+agyswitcher = "agyswitcher.cli:app"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+    "pytest-mock>=3.14",
+    "ruff>=0.4",
+    "mypy>=1.10",
+]
+
+build = [
+    "pyinstaller>=6.10",   # ejecutable de Windows (packaging/build.ps1)
+]
+
+docs = [
+    "mkdocs-material>=9.5",   # web de usuario (mkdocs.yml, docs/)
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+path = "src/agyswitcher/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/agyswitcher"]
+
+# ---------------------------------------------------------------------------
+# Ruff — linting y formato
+# ---------------------------------------------------------------------------
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "UP",  # pyupgrade
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
+    "SIM", # flake8-simplify
+]
+ignore = [
+    "E501",  # line too long (gestionado por formatter)
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["agyswitcher"]
+
+[tool.ruff.format]
+exclude = ["*.md"]
+
+# ---------------------------------------------------------------------------
+# Mypy — tipado estático
+# ---------------------------------------------------------------------------
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+# Ignorar librerías sin stubs por ahora
+[[tool.mypy.overrides]]
+module = ["typer.*"]
+ignore_missing_imports = true
+
+# ---------------------------------------------------------------------------
+# Pytest
+# ---------------------------------------------------------------------------
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-v --tb=short"

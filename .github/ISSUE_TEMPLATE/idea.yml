@@ -1,0 +1,21 @@
+name: Proponer una mejora
+description: Una idea o funcionalidad nueva.
+labels: ["mejora"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Qué problema resolvería
+      description: Describe la situación en la que la echas en falta.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Propuesta
+      description: Cómo te imaginas que funcionaría.
+  - type: markdown
+    attributes:
+      value: |
+        Recuerda los principios del proyecto: AgySwitcher no maneja tokens ni contraseñas,
+        no inicia sesión por ti y no modifica `%USERPROFILE%\.gemini`.

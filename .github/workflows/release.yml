@@ -1,0 +1,77 @@
+name: Release
+
+# Al publicar una etiqueta vX.Y.Z se compila el ejecutable (número de compilación =
+# número de ejecución del flujo), el ZIP portable y el instalador, y se crea la release
+# con esos ficheros y SHA256SUMS.txt. Con "Run workflow" se compila sin publicar nada
+# (los ficheros quedan como artefacto de la ejecución).
+
+on:
+  push:
+    tags: ["v*.*.*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+
+      - name: Instalar dependencias
+        run: python -m pip install -e ".[dev,build]"
+
+      - name: Comprobaciones
+        run: |
+          python -m pytest -q
+          python -m ruff check .
+          python -m mypy src
+
+      - name: Comprobar que la etiqueta coincide con la versión
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        run: |
+          $version = (python -c "import agyswitcher; print(agyswitcher.__version__)").Trim()
+          if ("v$version" -ne "${{ github.ref_name }}") {
+            throw "La etiqueta ${{ github.ref_name }} no coincide con la versión $version"
+          }
+
+      - name: Instalar Inno Setup si falta
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) {
+            choco install innosetup -y --no-progress
+          }
+
+      - name: Compilar
+        shell: pwsh
+        run: ./packaging/build.ps1 -BuildNumber ${{ github.run_number }} -Python python
+
+      - name: Guardar artefactos
+        uses: actions/upload-artifact@v7
+        with:
+          name: agyswitcher-${{ github.run_number }}
+          path: |
+            dist/*.exe
+            dist/*.zip
+            dist/SHA256SUMS.txt
+
+      - name: Publicar release
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $version = "${{ github.ref_name }}".TrimStart("v")
+          $changelog = Get-Content CHANGELOG.md -Raw -Encoding utf8
+          $pattern = "(?s)## \[$([regex]::Escape($version))\][^\n]*\n(.*?)(?=\n## \[|\z)"
+          $notes = if ($changelog -match $pattern) { $Matches[1].Trim() } else { "Versión $version." }
+          $notes += "`n`n**Verificación:** compara el SHA-256 de lo que descargues con SHA256SUMS.txt (``Get-FileHash <fichero>``)."
+          Set-Content release-notes.md $notes -Encoding utf8
+          gh release create "${{ github.ref_name }}" dist/*.exe dist/*.zip dist/SHA256SUMS.txt `
+            --title "AgySwitcher $version" --notes-file release-notes.md
