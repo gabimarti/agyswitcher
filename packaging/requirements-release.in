@@ -1,0 +1,15 @@
+# Dependencias directas de la compilación de releases (.github/workflows/release.yml).
+# Mismos rangos que pyproject.toml (dependencias, extras dev y build) más el backend de
+# compilación, que se instala aquí porque el paquete se instala sin aislamiento.
+# requirements-release.txt se genera a partir de este fichero, con versiones exactas y hashes:
+#   uv pip compile packaging/requirements-release.in --generate-hashes --python-version 3.11 \
+#     --python-platform x86_64-pc-windows-msvc -o packaging/requirements-release.txt
+typer>=0.12
+rich>=13
+pytest>=8
+pytest-mock>=3.14
+ruff>=0.4
+mypy>=1.10
+pyinstaller>=6.10
+hatchling
+editables   # hatchling lo necesita para la instalación editable (pip install -e .)

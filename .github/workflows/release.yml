@@ -4,6 +4,8 @@ name: Release
 # número de ejecución del flujo), el ZIP portable y el instalador, y se crea la release
 # con esos ficheros y SHA256SUMS.txt. Con "Run workflow" se compila sin publicar nada
 # (los ficheros quedan como artefacto de la ejecución).
+# La compilación es reproducible: dependencias de Python con versión exacta y hash
+# (packaging/requirements-release.txt) e Inno Setup en una versión fija verificada por SHA-256.
 
 on:
   push:
@@ -12,6 +14,11 @@ on:
 
 permissions:
   contents: write
+
+env:
+  INNO_VERSION: "6.7.3"
+  INNO_URL: https://github.com/jrsoftware/issrc/releases/download/is-6_7_3/innosetup-6.7.3.exe
+  INNO_SHA256: 9c73c3bae7ed48d44112a0f48e66742c00090bdb5bef71d9d3c056c66e97b732
 
 jobs:
   build:
@@ -23,8 +30,11 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Instalar dependencias
-        run: python -m pip install -e ".[dev,build]"
+      - name: Instalar dependencias (versiones fijadas con hash)
+        run: |
+          python -m pip install --require-hashes --no-deps -r packaging/requirements-release.txt
+          python -m pip install --no-deps --no-build-isolation -e .
+          python -m pip check
 
       - name: Comprobaciones
         run: |
@@ -41,16 +51,27 @@ jobs:
             throw "La etiqueta ${{ github.ref_name }} no coincide con la versión $version"
           }
 
-      - name: Instalar Inno Setup si falta
+      - name: Instalar Inno Setup (versión fija, SHA-256 verificado)
         shell: pwsh
         run: |
-          if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) {
-            choco install innosetup -y --no-progress
+          $installer = Join-Path $env:RUNNER_TEMP "innosetup-$env:INNO_VERSION.exe"
+          Invoke-WebRequest -Uri $env:INNO_URL -OutFile $installer
+          $hash = (Get-FileHash $installer -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($hash -ne $env:INNO_SHA256) {
+            throw "SHA-256 de Inno Setup inesperado: $hash"
           }
+          $dir = Join-Path $env:RUNNER_TEMP "innosetup"
+          $proc = Start-Process $installer -Wait -PassThru -ArgumentList @(
+            "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/SP-", "/CURRENTUSER", "/DIR=`"$dir`""
+          )
+          if ($proc.ExitCode -ne 0) { throw "La instalación de Inno Setup falló ($($proc.ExitCode))" }
+          $iscc = Join-Path $dir "ISCC.exe"
+          if (-not (Test-Path $iscc)) { throw "No se encontró $iscc" }
+          "ISCC=$iscc" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
 
       - name: Compilar
         shell: pwsh
-        run: ./packaging/build.ps1 -BuildNumber ${{ github.run_number }} -Python python
+        run: ./packaging/build.ps1 -BuildNumber ${{ github.run_number }} -Python python -Iscc $env:ISCC
 
       - name: Guardar artefactos
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

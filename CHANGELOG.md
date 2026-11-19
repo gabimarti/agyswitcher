@@ -47,6 +47,8 @@ Todos los cambios relevantes de AgySwitcher se documentan en este fichero.
   guardarse en memoria.
 - Las acciones de GitHub de los flujos de compilación, pruebas y web se fijan por SHA, con
   actualizaciones mediante Dependabot.
+- Los ejecutables publicados se compilan con versiones exactas de todas las dependencias,
+  verificadas por hash, y con una versión fija de Inno Setup verificada por SHA-256.
 
 ## [1.1.0] - 2026-11-19
 

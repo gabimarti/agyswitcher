@@ -432,6 +432,13 @@ agyswitcher/src/agyswitcher/
 - GitHub Actions: `ci.yml` (pruebas en cada push) y `release.yml` (al publicar `vX.Y.Z`:
   comprueba que la etiqueta coincide con `__version__`, compila con el número de ejecución
   y publica la release con las notas del CHANGELOG).
+- Compilación reproducible de las releases: `release.yml` instala las dependencias de
+  Python desde `packaging/requirements-release.txt` (versión exacta y hash SHA-256 de cada
+  paquete, `pip install --require-hashes --no-deps`; el paquete se instala después sin
+  aislamiento) e Inno Setup en una versión fija descargada de la release oficial y
+  verificada por SHA-256. `requirements-release.in` recoge los rangos de `pyproject.toml`
+  (un test comprueba que coinciden) y el `.txt` se regenera con `uv pip compile`
+  (comando en su cabecera).
 - Sin firma de código por ahora (aviso de SmartScreen documentado; SHA-256 publicados).
 - Web: MkDocs Material (`mkdocs.yml`) sobre `docs/` (portada `docs/index.md`, manual,
   tutoriales y documentación técnica). `ci.yml` la construye en modo estricto (enlaces rotos
