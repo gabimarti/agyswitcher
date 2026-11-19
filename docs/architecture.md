@@ -254,6 +254,12 @@ subprocess.run(["taskkill", "/T", "/F", "/PID", str(proc.pid)], check=False)
 Los subprocesos `agy` se crean con `creationflags=subprocess.CREATE_NEW_PROCESS_GROUP`
 para permitir el envío de `CTRL_C_EVENT` / `CTRL_BREAK_EVENT` de forma aislada.
 
+Las consultas no interactivas (`agy -p /usage`, `agy models`) usan `runner.run_captured`
+en lugar de `subprocess.run(..., timeout=...)`. En Windows, si el proceso deja nietos que
+heredan las tuberías, `subprocess.run` se bloquea indefinidamente tras el timeout porque
+espera el fin de la salida. `run_captured` conecta `stdin` a `DEVNULL`, termina el árbol
+con `taskkill /T /F` al expirar el tiempo y acota también la espera posterior.
+
 ---
 
 ## 6. Detector de Cuota y Motor de Rotación

@@ -4,8 +4,10 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -18,6 +20,7 @@ from agyswitcher.runner import (
     find_running_agy_processes,
     kill_process_tree,
     run_agy_process,
+    run_captured,
     sanitize_line,
 )
 
@@ -288,3 +291,72 @@ def test_find_running_agy_processes_unknown_on_failure(monkeypatch: pytest.Monke
         MagicMock(return_value=MagicMock(returncode=1, stdout="")),
     )
     assert find_running_agy_processes() is None
+
+
+# ---------------------------------------------------------------------------
+# run_captured: ejecución no interactiva con tiempo máximo garantizado (5f-3)
+# ---------------------------------------------------------------------------
+
+# Script del hijo: lanza un nieto que hereda stdout/stderr, guarda su PID y espera.
+_SPAWN_GRANDCHILD = (
+    "import subprocess, sys, time\n"
+    "g = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)'],"
+    " stdout=sys.stdout, stderr=sys.stderr)\n"
+    "open(sys.argv[1], 'w').write(str(g.pid))\n"
+    "if sys.argv[2] == 'wait':\n"
+    "    time.sleep(60)\n"
+)
+
+
+def _pid_alive(pid: int) -> bool:
+    out = subprocess.run(
+        ["tasklist", "/FI", f"PID eq {pid}", "/NH", "/FO", "CSV"],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=10,
+    ).stdout
+    return f'"{pid}"' in out
+
+
+def test_run_captured_success_and_stdin_closed() -> None:
+    """Captura la salida en UTF-8 y el hijo recibe stdin vacío (no se queda esperando teclado)."""
+    code = "import sys; data = sys.stdin.read(); print('ok-ñ', len(data))"
+    res = run_captured([sys.executable, "-X", "utf8", "-c", code], timeout=20)
+    assert res.returncode == 0
+    assert res.stdout.strip() == "ok-ñ 0"
+
+
+def test_run_captured_nonzero_exit() -> None:
+    code = "import sys; sys.stderr.write('fallo'); sys.exit(3)"
+    res = run_captured([sys.executable, "-c", code], timeout=20)
+    assert res.returncode == 3
+    assert "fallo" in res.stderr
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Árbol de procesos con taskkill (Windows)")
+def test_run_captured_timeout_kills_whole_tree(tmp_path: Path) -> None:
+    """Al expirar el tiempo termina hijo y nieto y vuelve enseguida (antes se bloqueaba)."""
+    pid_file = tmp_path / "grandchild.pid"
+    cmd = [sys.executable, "-c", _SPAWN_GRANDCHILD, str(pid_file), "wait"]
+    start = time.monotonic()
+    with pytest.raises(subprocess.TimeoutExpired):
+        run_captured(cmd, timeout=3.0, kill_grace=3.0)
+    assert time.monotonic() - start < 15
+    grandchild = int(pid_file.read_text())
+    assert not _pid_alive(grandchild)
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Herencia de tuberías en Windows")
+def test_run_captured_bounded_when_orphan_holds_pipes(tmp_path: Path) -> None:
+    """El hijo termina pero un nieto huérfano mantiene las tuberías: la espera sigue acotada."""
+    pid_file = tmp_path / "grandchild.pid"
+    cmd = [sys.executable, "-c", _SPAWN_GRANDCHILD, str(pid_file), "exit"]
+    start = time.monotonic()
+    try:
+        with pytest.raises(subprocess.TimeoutExpired):
+            run_captured(cmd, timeout=3.0, kill_grace=1.0)
+        assert time.monotonic() - start < 15
+    finally:
+        if pid_file.exists():
+            kill_process_tree(int(pid_file.read_text()))

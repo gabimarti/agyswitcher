@@ -21,7 +21,7 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
-from agyswitcher.runner import AgyNotFoundError, find_agy_executable
+from agyswitcher.runner import AgyNotFoundError, find_agy_executable, run_captured
 
 
 class ModelsError(Exception):
@@ -166,13 +166,7 @@ def fetch_available_models(
 
     cmd = [str(exe), "models"]
     try:
-        proc = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-            check=False,
-        )
+        proc = run_captured(cmd, timeout=timeout)
     except subprocess.TimeoutExpired as exc:
         if fallback_to_known:
             return list(KNOWN_MODELS)

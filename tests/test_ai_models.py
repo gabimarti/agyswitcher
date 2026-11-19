@@ -65,7 +65,7 @@ def test_parse_models_output_empty_or_errors() -> None:
 
 
 @patch("agyswitcher.ai_models.find_agy_executable")
-@patch("subprocess.run")
+@patch("agyswitcher.ai_models.run_captured")
 def test_fetch_available_models_success(mock_run: MagicMock, mock_find: MagicMock) -> None:
     """fetch_available_models ejecuta agy models y parsea su salida."""
     mock_find.return_value = Path("C:/mock/agy.exe")
@@ -79,15 +79,12 @@ def test_fetch_available_models_success(mock_run: MagicMock, mock_find: MagicMoc
     assert result[0].id == "gemini-flash-test"
     mock_run.assert_called_once_with(
         ["C:\\mock\\agy.exe", "models"],
-        capture_output=True,
-        text=True,
         timeout=5.0,
-        check=False,
     )
 
 
 @patch("agyswitcher.ai_models.find_agy_executable")
-@patch("subprocess.run")
+@patch("agyswitcher.ai_models.run_captured")
 def test_fetch_available_models_fallback_on_error(
     mock_run: MagicMock, mock_find: MagicMock
 ) -> None:

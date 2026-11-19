@@ -128,7 +128,7 @@ def test_fetch_usage_success(monkeypatch: pytest.MonkeyPatch) -> None:
         "Claude and GPT models\tWeekly Limit Remaining\t100%\t2026-11-12T10:05:32Z\n"
     )
     mock_run = MagicMock(return_value=MagicMock(returncode=0, stdout=stdout_sample, stderr=""))
-    monkeypatch.setattr(subprocess, "run", mock_run)
+    monkeypatch.setattr("agyswitcher.usage.run_captured", mock_run)
 
     report = fetch_usage(agy_path=Path("C:/dummy/agy.exe"))
     assert report.is_authenticated is True
@@ -140,7 +140,7 @@ def test_fetch_usage_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
     def _timeout(*args: object, **kwargs: object) -> None:
         raise subprocess.TimeoutExpired(cmd=["agy"], timeout=5.0)
 
-    monkeypatch.setattr(subprocess, "run", _timeout)
+    monkeypatch.setattr("agyswitcher.usage.run_captured", _timeout)
     with pytest.raises(UsageError, match="Tiempo de espera agotado"):
         fetch_usage(timeout=5.0, agy_path=Path("C:/dummy/agy.exe"))
 
@@ -153,7 +153,7 @@ def test_fetch_usage_auth_error(monkeypatch: pytest.MonkeyPatch) -> None:
             stderr="Error: unauthorized, please log in with google to proceed.",
         )
     )
-    monkeypatch.setattr(subprocess, "run", mock_run)
+    monkeypatch.setattr("agyswitcher.usage.run_captured", mock_run)
 
     with pytest.raises(AuthRequiredError, match="Sesión no iniciada"):
         fetch_usage(agy_path=Path("C:/dummy/agy.exe"))
@@ -167,7 +167,7 @@ def test_fetch_usage_generic_error(monkeypatch: pytest.MonkeyPatch) -> None:
             stderr="Internal server crash 500",
         )
     )
-    monkeypatch.setattr(subprocess, "run", mock_run)
+    monkeypatch.setattr("agyswitcher.usage.run_captured", mock_run)
 
     with pytest.raises(UsageError, match="finalizó con código 2"):
         fetch_usage(agy_path=Path("C:/dummy/agy.exe"))

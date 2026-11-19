@@ -6,7 +6,7 @@ Módulo: runner.py
 Autor: Gabriel Marti
 Website & Contact: https://gabimarti.github.io/
 Fecha inicio: 2026-11-03
-Ultimo cambio: 2026-11-06
+Ultimo cambio: 2026-11-19
 
 Descripción: Módulo runner para la ejecución segura de Antigravity CLI (agy) en Windows.
 
@@ -136,6 +136,61 @@ def kill_process_tree(pid: int) -> None:
         sig = getattr(signal, "SIGKILL", signal.SIGTERM)
         with contextlib.suppress(OSError):
             os.kill(pid, sig)
+
+
+def run_captured(
+    cmd: list[str],
+    *,
+    timeout: float,
+    kill_grace: float = 3.0,
+) -> subprocess.CompletedProcess[str]:
+    """Ejecuta un comando no interactivo capturando su salida, con un tiempo máximo garantizado.
+
+    A diferencia de ``subprocess.run(..., timeout=...)``, no puede quedarse bloqueado en
+    Windows cuando el proceso deja procesos nietos con las tuberías abiertas: al expirar el
+    tiempo termina todo el árbol de procesos y la espera posterior también está acotada.
+    La entrada estándar se conecta a ``DEVNULL`` para que el hijo nunca espere teclado.
+
+    Args:
+        cmd: Comando y argumentos (sin shell).
+        timeout: Segundos máximos de espera del comando.
+        kill_grace: Segundos máximos para recoger la salida tras terminar el árbol.
+
+    Returns:
+        CompletedProcess con el código de salida y la salida capturada como texto UTF-8.
+
+    Raises:
+        subprocess.TimeoutExpired: Si el comando excede ``timeout`` (el árbol ya está terminado).
+        OSError: Si el proceso no se puede lanzar.
+    """
+    creationflags = subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0
+    proc = subprocess.Popen(
+        cmd,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        shell=False,
+        creationflags=creationflags,
+    )
+    try:
+        stdout, stderr = proc.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        _kill_and_reap(proc, kill_grace)
+        raise subprocess.TimeoutExpired(cmd, timeout) from None
+    except KeyboardInterrupt:
+        _kill_and_reap(proc, kill_grace)
+        raise
+    return subprocess.CompletedProcess(cmd, proc.returncode, stdout, stderr)
+
+
+def _kill_and_reap(proc: subprocess.Popen[str], grace: float) -> None:
+    """Termina el árbol del proceso y espera de forma acotada a que se cierren sus tuberías."""
+    kill_process_tree(proc.pid)
+    with contextlib.suppress(subprocess.TimeoutExpired):
+        proc.communicate(timeout=grace)
 
 
 def _terminate_cleanly(proc: subprocess.Popen[str], grace_period: float = 2.0) -> None:

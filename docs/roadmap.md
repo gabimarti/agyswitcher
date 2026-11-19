@@ -121,7 +121,7 @@ flowchart TD
 - [x] Reinicio de `agy` tras una rotación: resuelto por el cambio guiado (2b), basado en un inicio de sesión nuevo.
 - [x] **2e. Carpeta `.gemini` única (cambio de rumbo).** Los perfiles por cuenta no cambiaban la cuenta de Google y separaban historial, conversaciones, MCP y *skills*, que es lo que interesa conservar para seguir el mismo proyecto con otra cuenta. Se eliminan las junctions, `migrate` y la siembra de perfiles: `%USERPROFILE%\.gemini` es común y AgySwitcher no la modifica. El cambio guiado ya no exige cerrar `agy` ni cambia carpetas; solo indica el email, espera y verifica. Suite: **176 tests**.
 - [x] **2f. Continuidad del proyecto entre cuentas y agentes.** `agyswitcher init` prepara un repositorio (`AGENTS.md` común, ficheros de Gemini/agy, Claude, Copilot y Cursor que remiten a él, `dev_mem/ESTADO.md`, `dev_mem/TODO.md`, `.agyswitcher.toml`) sin sobrescribir nada; `agyswitcher handoff [save|resume]` muestra las instrucciones de traspaso (personalizables por proyecto); aviso de cuota baja (≤ 15 %) en `list`, `status` y `run`; instrucción para retomar tras un cambio de cuenta verificado. Suite: **194 tests**.
-- [ ] `add` no debe bloquear la consola al consultar la cuota de un perfil sin sesión.
+- [x] **3.** Consultas no interactivas a `agy` (`agy -p /usage`, `agy models`) con tiempo máximo garantizado: entrada estándar vacía y, si se agota el tiempo, se termina todo el árbol de procesos. Corrige que `add` pudiera dejar la consola bloqueada cuando `agy` dejaba procesos hijos con la salida abierta. Suite: **221 tests**.
 
 ---
 

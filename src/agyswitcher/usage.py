@@ -18,7 +18,6 @@ de los pools 'gemini' y 'external'.
 from __future__ import annotations
 
 import contextlib
-import os
 import re
 import subprocess
 from dataclasses import dataclass, field
@@ -26,7 +25,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from agyswitcher.models import AppState
-from agyswitcher.runner import RunnerError, find_agy_executable, sanitize_line
+from agyswitcher.runner import RunnerError, find_agy_executable, run_captured, sanitize_line
 
 _AUTH_ERROR_PATTERNS = [
     re.compile(r"(?i)\b(?:please\s+log\s+in|not\s+logged\s+in|authentication\s+required)\b"),
@@ -313,22 +312,8 @@ def fetch_usage(
     exe = agy_path if agy_path is not None else find_agy_executable()
     cmd = [str(exe), "-p", "/usage"]
 
-    creationflags = 0
-    if os.name == "nt":
-        creationflags = subprocess.CREATE_NEW_PROCESS_GROUP
-
     try:
-        proc = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=timeout,
-            shell=False,
-            creationflags=creationflags,
-            check=False,
-        )
+        proc = run_captured(cmd, timeout=timeout)
     except subprocess.TimeoutExpired as err:
         raise UsageError(
             f"Tiempo de espera agotado ({timeout}s) al consultar la cuota de agy."

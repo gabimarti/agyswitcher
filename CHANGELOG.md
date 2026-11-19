@@ -8,6 +8,12 @@ Los ejecutables oficiales añaden un número de compilación: `MAJOR.MINOR.PATCH
 
 ## [Sin publicar]
 
+### Corregido
+
+- `agyswitcher add` (y cualquier consulta de cuota o de modelos) podía dejar la consola
+  bloqueada si `agy` no terminaba a tiempo: ahora la espera tiene un límite real, se
+  termina `agy` con todos sus procesos y `agy` nunca se queda esperando entrada de teclado.
+
 ## [1.0.0] - 2026-11-18
 
 Primera versión pública: ejecutable e instalador para Windows, manual, tutoriales y web.
