@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 Gabriel Marti
+#
+# Las acciones de los flujos de GitHub están fijadas por SHA; Dependabot propone
+# las actualizaciones como pull request para revisarlas antes de aceptarlas.
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    groups:
+      github-actions:
+        patterns: ["*"]
+    commit-message:
+      prefix: "ci"
