@@ -118,6 +118,12 @@ Sin argumentos, elige automáticamente:
    cambia de pool (no requiere iniciar sesión).
 2. Si no, cambia a la siguiente cuenta con cuota mediante el cambio guiado.
 
+Si ninguna cuenta tiene cuota libre, elige una cuyo reinicio previsto ya haya pasado
+(avisando de que está sin confirmar). Si todas siguen agotadas según los datos guardados,
+muestra la antigüedad del dato y el reinicio previsto de cada cuenta, y te sugiere cuál
+comprobar primero (ver [Conceptos](conceptos.md#cuota-consultada-y-cuota-guardada)). Al
+terminar el cambio de cuenta consulta la cuota de la nueva cuenta.
+
 Con un alias (`agyswitcher rotate trabajo`) cambia a esa cuenta. Admite `--timeout` como
 `set-active`.
 
@@ -139,7 +145,9 @@ Si durante la ejecución se agota la cuota, muestra un aviso en ese momento y, a
 
 - si la cuenta tiene libre el otro pool, cambia de pool (vuelve a lanzar `agyswitcher run`);
 - si no, **propone** la siguiente cuenta con cuota y el comando para cambiar, y te recuerda
-  guardar el estado (`handoff save`). No cambia de cuenta por sí mismo.
+  guardar el estado (`handoff save`). No cambia de cuenta por sí mismo;
+- si todas figuran agotadas, te sugiere qué cuenta comprobar primero, como
+  [`rotate`](#rotate).
 
 Si lo que se agota es el pool que no estás usando, no propone ningún cambio.
 
@@ -155,7 +163,9 @@ Al detectar cuota agotada la anota y:
 
 - si la cuenta tiene libre el otro pool, cambia de pool;
 - si no, **propone** la siguiente cuenta con cuota y el comando para cambiar, y te recuerda
-  guardar el estado (`handoff save`). No cambia de cuenta por sí mismo.
+  guardar el estado (`handoff save`). No cambia de cuenta por sí mismo;
+- si todas figuran agotadas, te sugiere qué cuenta comprobar primero, como
+  [`rotate`](#rotate).
 
 Si lo que se agota es el pool que no estás usando, solo lo anota.
 

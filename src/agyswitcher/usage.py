@@ -6,7 +6,7 @@ Módulo: usage.py
 Autor: Gabriel Marti
 Website & Contact: https://gabimarti.github.io/
 Fecha inicio: 2026-11-03
-Ultimo cambio: 2026-11-06
+Ultimo cambio: 2026-11-19
 
 Descripción: Módulo de consulta y análisis de cuota en vivo y estado de autenticación.
 
@@ -393,14 +393,16 @@ def update_state_from_usage_report(
         now_iso = report.timestamp.isoformat()
         if gemini_pool:
             if gemini_pool.is_exhausted:
-                if alias not in state.gemini_quota_exhausted:
+                # Se renueva la fecha si el reinicio previsto ya pasó: el dato era antiguo.
+                if not state.is_pool_blocked(alias, "gemini", report.timestamp):
                     state.gemini_quota_exhausted[alias] = now_iso
             elif alias in state.gemini_quota_exhausted:
                 del state.gemini_quota_exhausted[alias]
 
         if external_pool:
             if external_pool.is_exhausted:
-                if alias not in state.external_quota_exhausted:
+                # Se renueva la fecha si el reinicio previsto ya pasó: el dato era antiguo.
+                if not state.is_pool_blocked(alias, "external", report.timestamp):
                     state.external_quota_exhausted[alias] = now_iso
             elif alias in state.external_quota_exhausted:
                 del state.external_quota_exhausted[alias]

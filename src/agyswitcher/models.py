@@ -6,7 +6,7 @@ Módulo: models.py
 Autor: Gabriel Marti
 Website & Contact: https://gabimarti.github.io/
 Fecha inicio: 2026-11-03
-Ultimo cambio: 2026-11-06
+Ultimo cambio: 2026-11-19
 
 Descripción: Modelos de datos de AgySwitcher.
 
@@ -19,7 +19,7 @@ from __future__ import annotations
 import contextlib
 import re
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 EMAIL_PATTERN = re.compile(r"^[\w.+\-]+@[\w\-]+(?:\.[\w\-]+)+$")
 """Formato de email aceptado (mismo criterio que los patrones de los logs de agy)."""
@@ -29,6 +29,23 @@ STORED_ALIAS_PATTERN = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 
 MAX_SWITCH_HISTORY = 200
 """Número máximo de entradas que se conservan en el historial de cambios."""
+
+QUOTA_POOLS: tuple[str, str] = ("gemini", "external")
+"""Pools de cuota de cada cuenta, en orden de preferencia."""
+
+QUOTA_RESET_FALLBACK = timedelta(days=7)
+"""Reinicio estimado de un pool agotado cuando no hay fecha de reinicio fiable (cuota semanal)."""
+
+
+def parse_utc(value: object) -> datetime | None:
+    """Convierte una fecha ISO en datetime con zona (UTC si no la trae); None si no es válida."""
+    if not isinstance(value, str):
+        return None
+    try:
+        dt = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    return dt if dt.tzinfo is not None else dt.replace(tzinfo=UTC)
 
 
 def is_valid_email(value: str) -> bool:
@@ -179,6 +196,61 @@ class AppState:
         self.switch_history.append(event)
         if len(self.switch_history) > MAX_SWITCH_HISTORY:
             del self.switch_history[: len(self.switch_history) - MAX_SWITCH_HISTORY]
+
+    def _exhausted_dict(self, pool: str) -> dict[str, str]:
+        return self.gemini_quota_exhausted if pool == "gemini" else self.external_quota_exhausted
+
+    def is_pool_exhausted(self, alias: str, pool: str) -> bool:
+        """Indica si el pool figura como agotado en los datos guardados (sin mirar el reinicio)."""
+        return alias in self._exhausted_dict(pool)
+
+    def exhausted_since(self, alias: str, pool: str) -> datetime | None:
+        """Momento en que se registró el pool como agotado (None si no lo está o no es legible)."""
+        return parse_utc(self._exhausted_dict(pool).get(alias))
+
+    def estimated_reset(self, alias: str, pool: str) -> datetime | None:
+        """Reinicio previsto de un pool agotado.
+
+        Usa la fecha de reinicio guardada si es posterior al agotamiento; si no la hay (o es
+        de un periodo anterior), estima agotamiento + QUOTA_RESET_FALLBACK. None si el pool no
+        figura como agotado o la fecha de agotamiento no es legible.
+        """
+        since = self.exhausted_since(alias, pool)
+        if since is None:
+            return None
+        info = self.accounts_quota.get(alias)
+        reset = None
+        if info is not None:
+            reset = info.gemini_reset_time if pool == "gemini" else info.external_reset_time
+        if reset is not None:
+            if reset.tzinfo is None:
+                reset = reset.replace(tzinfo=UTC)
+            if reset > since:
+                return reset
+        return since + QUOTA_RESET_FALLBACK
+
+    def is_pool_blocked(self, alias: str, pool: str, now: datetime | None = None) -> bool:
+        """Indica si el pool está agotado y su reinicio previsto aún no ha llegado.
+
+        Un pool agotado cuyo reinicio previsto ya pasó se considera probablemente disponible
+        (sin confirmar hasta consultar la cuota en vivo con esa cuenta).
+        """
+        if not self.is_pool_exhausted(alias, pool):
+            return False
+        reset = self.estimated_reset(alias, pool)
+        if reset is None:
+            return True
+        return (now or datetime.now(UTC)) < reset
+
+    def usable_group_for(self, alias: str, now: datetime | None = None) -> str | None:
+        """Pool utilizable de la cuenta: primero uno no agotado; si no, uno con el reinicio ya pasado."""
+        for pool in QUOTA_POOLS:
+            if not self.is_pool_exhausted(alias, pool):
+                return pool
+        for pool in QUOTA_POOLS:
+            if not self.is_pool_blocked(alias, pool, now):
+                return pool
+        return None
 
     def is_account_fully_exhausted(self, alias: str) -> bool:
         """Devuelve True si la cuenta tiene ambos pools de cuota agotados."""

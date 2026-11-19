@@ -287,18 +287,29 @@ Cuentas registradas: [A (activa), B (standby), C (standby)]
 Evento: cuota agotada en cuenta A
   │
   ▼
-Selección de candidato (política "balanced"):
-  ├── Filtrar: excluir cuentas en estado "exhausted" o "cooldown" vigente
-  ├── Ordenar por: quota_reset_at ASC (las con cuota disponible más antes, primero)
-  └── Seleccionar: B (mejor candidata)
+Selección de candidato (rotator.select_next_candidate):
+  ├── 1. Otro pool de A sin agotar -> cambio de pool (sin sesión)
+  ├── 2. Siguiente cuenta (orden circular desde A) con un pool sin agotar
+  ├── 3. Igual que 1 y 2, aceptando pools agotados cuyo reinicio previsto ya pasó
+  │      (sin confirmar)
+  └── Ninguna -> "según los datos guardados, todas agotadas": antigüedad del dato,
+                 reinicio previsto de cada cuenta y sugerencia de la de reinicio más
+                 próximo (rotator.suggest_account_to_check)
   │
   ▼
 Cambio:
   ├── Registrar A con: cuota agotada en el pool afectado
   ├── Si A tiene el otro pool libre -> cambio de pool (sin sesión)
   └── Si no -> proponer B con su email: "agyswitcher set-active B"
-                (cambio guiado, §3.3: requiere que el usuario inicie sesión)
+                (cambio guiado, §3.3: requiere que el usuario inicie sesión;
+                 al terminar se consulta la cuota de B en vivo)
 ```
+
+**Reinicio previsto de un pool agotado** (`AppState.estimated_reset`): la fecha de reinicio
+guardada si es posterior al agotamiento; si no, agotamiento + 7 días. Un pool agotado solo
+bloquea la cuenta hasta esa fecha (`AppState.is_pool_blocked`). Las marcas de agotado no se
+borran por tiempo: solo una consulta en vivo de la cuenta las levanta o las confirma (y, si
+el reinicio previsto ya había pasado, renueva la fecha de agotamiento).
 
 ### 6.3 Estimación del reinicio de cuota
 

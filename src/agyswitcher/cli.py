@@ -6,7 +6,7 @@ Módulo: cli.py
 Autor: Gabriel Marti
 Website & Contact: https://gabimarti.github.io/
 Fecha inicio: 2026-11-03
-Ultimo cambio: 2026-11-18
+Ultimo cambio: 2026-11-19
 
 Descripción: Entry point de la interfaz de línea de comandos de AgySwitcher.
 """
@@ -49,9 +49,12 @@ from agyswitcher.project import (
 )
 from agyswitcher.quota import QuotaDetector
 from agyswitcher.rotator import (
+    account_reset_estimate,
     default_live_dir,
+    quota_data_time,
     record_rotation,
     select_next_candidate,
+    suggest_account_to_check,
 )
 from agyswitcher.runner import (
     AgyNotFoundError,
@@ -164,6 +167,94 @@ def _warn_low_quota(accounts: dict[str, Account], state: AppState) -> None:
     candidate = select_next_candidate(accounts, state)
     if candidate and candidate[0] != alias:
         console.print(f"[dim]Siguiente cuenta con cuota: '{candidate[0]}'.[/dim]")
+
+
+def _format_age(moment: datetime, now: datetime) -> str:
+    """Antigüedad legible de un momento pasado (ej. '2d 3h', '45m', 'menos de 1m')."""
+    total = int((now - moment).total_seconds())
+    if total < 60:
+        return "menos de 1m"
+    days, rest = divmod(total, 86400)
+    hours, rest = divmod(rest, 3600)
+    if days:
+        return f"{days}d {hours}h"
+    if hours:
+        return f"{hours}h {rest // 60}m"
+    return f"{rest // 60}m"
+
+
+def _print_all_exhausted(
+    accounts: dict[str, Account], state: AppState, now: datetime | None = None
+) -> None:
+    """Explica que todas las cuentas figuran agotadas según los datos guardados y qué comprobar.
+
+    Los datos de las cuentas sin sesión pueden estar desfasados: Google a veces restablece la
+    cuota antes de la fecha prevista y solo se confirma iniciando sesión con esa cuenta.
+    """
+    current = now or datetime.now(UTC)
+    console.print(
+        "[bold red]Según los datos guardados, todas las cuentas tienen la cuota agotada.[/bold red]"
+    )
+    console.print(
+        "[dim]Google a veces restablece la cuota antes de la fecha prevista; solo se confirma "
+        "iniciando sesión con la cuenta.[/dim]"
+    )
+    for alias in sorted(accounts):
+        data_time = quota_data_time(state, alias)
+        reset = account_reset_estimate(state, alias)
+        age = f"dato de hace {_format_age(data_time, current)}" if data_time else "sin datos"
+        reset_desc = (
+            f"reinicio en {format_time_remaining(reset, current)} "
+            f"({reset.strftime('%d/%m %H:%M')} UTC)"
+            if reset
+            else "reinicio desconocido"
+        )
+        active_mark = " (activa)" if alias == state.active else ""
+        console.print(f"  - {escape(alias)}{active_mark}: {age}; {reset_desc}")
+
+    suggested = suggest_account_to_check(accounts, state, exclude=state.active)
+    if suggested:
+        console.print(
+            f"Comprueba primero '[bold]{escape(suggested)}[/bold]' (reinicio más próximo); "
+            "set-active consulta su cuota:"
+        )
+        console.print(
+            f"  [bold cyan]agyswitcher set-active {escape(suggested)}[/bold cyan]", soft_wrap=True
+        )
+
+
+def _refresh_quota_after_switch(alias: str, accounts: dict[str, Account], state: AppState) -> None:
+    """Consulta la cuota en vivo tras un cambio de cuenta y actualiza los datos guardados.
+
+    Confirma (o descarta) que la cuota de la cuenta esté agotada: los datos guardados de una
+    cuenta sin sesión pueden estar desfasados. Si la consulta falla, solo lo indica.
+    """
+    was_exhausted = [p for p in ("gemini", "external") if state.is_pool_exhausted(alias, p)]
+    try:
+        report = fetch_usage(timeout=10.0)
+    except USAGE_FETCH_ERRORS:
+        report = None
+    if report is None or not report.pools or _report_owner(accounts, state, report) != alias:
+        console.print(
+            "[dim]No se pudo consultar la cuota en vivo. Compruébala con "
+            "'agyswitcher list --live'.[/dim]"
+        )
+        return
+
+    update_state_from_usage_report(state, alias, report)
+    with contextlib.suppress(StateError):
+        save_state(state)
+    info = state.accounts_quota.get(alias)
+    if info:
+        gem_p = f"{info.gemini_percent}%" if info.gemini_percent is not None else "—"
+        ext_p = f"{info.external_percent}%" if info.external_percent is not None else "—"
+        console.print(f"[dim]Cuota sincronizada: Gemini {gem_p} | Otros {ext_p}[/dim]")
+    for pool in was_exhausted:
+        pool_name = "Gemini" if pool == "gemini" else "Otros"
+        if state.is_pool_exhausted(alias, pool):
+            console.print(f"[yellow]Confirmado: la cuota de {pool_name} sigue agotada.[/yellow]")
+        else:
+            console.print(f"[green]✓ La cuota de {pool_name} vuelve a estar disponible.[/green]")
 
 
 def _guided_account_switch(
@@ -545,17 +636,7 @@ def set_active(
     if switched:
         _print_resume_hint()
 
-    with contextlib.suppress(*USAGE_FETCH_ERRORS):
-        report = fetch_usage(timeout=10.0)
-        if report and report.pools and _report_owner(accounts, state, report) == clean_alias:
-            update_state_from_usage_report(state, clean_alias, report)
-            with contextlib.suppress(StateError):
-                save_state(state)
-            info = state.accounts_quota.get(clean_alias)
-            if info:
-                gem_p = f"{info.gemini_percent}%" if info.gemini_percent is not None else "—"
-                ext_p = f"{info.external_percent}%" if info.external_percent is not None else "—"
-                console.print(f"[dim]Cuota sincronizada: Gemini {gem_p} | Otros {ext_p}[/dim]")
+    _refresh_quota_after_switch(clean_alias, accounts, state)
 
 
 @app.command(
@@ -1644,18 +1725,20 @@ def rotate(
     else:
         candidate = select_next_candidate(accounts, state)
         if candidate is None:
-            typer.secho(
-                "Error: Todas las cuentas configuradas tienen su cuota agotada en ambos pools.",
-                fg=typer.colors.RED,
-                err=True,
-            )
+            _print_all_exhausted(accounts, state)
             raise typer.Exit(code=1)
         target_alias, target_pool = candidate
+        if state.is_pool_exhausted(target_alias, target_pool):
+            console.print(
+                f"[yellow]El reinicio previsto de '{escape(target_alias)}' ya pasó: su cuota "
+                "debería estar disponible (sin confirmar).[/yellow]"
+            )
 
     if target_alias != state.active:
         msg = _guided_account_switch(target_alias, target_pool, accounts, state, timeout)
         typer.secho(msg, fg=typer.colors.GREEN)
         _print_resume_hint()
+        _refresh_quota_after_switch(target_alias, accounts, state)
         return
 
     try:
@@ -1696,6 +1779,12 @@ def _propose_after_exhaustion(accounts: dict[str, Account], state: AppState) -> 
         return None
 
     candidate = select_next_candidate(accounts, state)
+    if candidate and state.is_pool_exhausted(*candidate):
+        typer.secho(
+            f"El reinicio previsto de '{candidate[0]}' ({candidate[1]}) ya pasó: su cuota "
+            "debería estar disponible (sin confirmar).",
+            fg=typer.colors.YELLOW,
+        )
     if candidate and candidate[0] == active:
         # Misma cuenta, otro pool: no requiere iniciar sesión.
         rot_msg = record_rotation(candidate[0], candidate[1], state)
@@ -1715,7 +1804,7 @@ def _propose_after_exhaustion(accounts: dict[str, Account], state: AppState) -> 
             fg=typer.colors.CYAN,
         )
     else:
-        typer.secho("Todas las cuentas tienen la cuota agotada.", fg=typer.colors.RED)
+        _print_all_exhausted(accounts, state)
     return None
 
 

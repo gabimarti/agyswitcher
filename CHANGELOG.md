@@ -8,7 +8,20 @@ Los ejecutables oficiales añaden un número de compilación: `MAJOR.MINOR.PATCH
 
 ## [Sin publicar]
 
+### Añadido
+
+- Cuando todas las cuentas figuran agotadas, `run`, `watch` y `rotate` lo indican como
+  «según los datos guardados» (Google a veces restablece la cuota antes de tiempo), muestran
+  la antigüedad del dato y el reinicio previsto de cada cuenta, y sugieren comprobar primero
+  la de reinicio más próximo.
+- `rotate` consulta la cuota de la nueva cuenta al terminar el cambio, como `set-active`, e
+  indica si la cuota que figuraba agotada vuelve a estar disponible o sigue agotada.
+
 ### Cambiado
+
+- Una cuenta agotada vuelve a tenerse en cuenta al elegir la siguiente cuenta cuando pasa su
+  reinicio previsto (se avisa de que está sin confirmar). Antes seguía descartada hasta
+  consultar su cuota en vivo.
 
 - Los alias nuevos deben empezar y terminar por letra o número (ya no se aceptan `-`, `_` ni
   alias que empiecen por guion, que se confundían con opciones). Las cuentas existentes no

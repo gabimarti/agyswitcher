@@ -359,3 +359,28 @@ def test_detect_active_email_ignores_malformed_addresses(tmp_path: Path) -> None
         encoding="utf-8",
     )
     assert detect_active_email(base_dir=tmp_path) == "valido@example.com"
+
+
+def test_sync_renews_exhaustion_date_when_reset_already_passed() -> None:
+    """Si la consulta confirma el agotado y el reinicio previsto ya pasó, se renueva la fecha."""
+    from datetime import UTC, datetime
+
+    from agyswitcher.models import AppState
+    from agyswitcher.usage import PoolUsage, UsageReport, update_state_from_usage_report
+
+    now = datetime(2026, 11, 19, 12, 0, tzinfo=UTC)
+    state = AppState()
+    state.gemini_quota_exhausted["a"] = "2026-11-01T12:00:00+00:00"  # reinicio previsto 11-08
+    state.external_quota_exhausted["a"] = "2026-11-18T12:00:00+00:00"  # aún vigente
+    report = UsageReport(
+        is_authenticated=True,
+        timestamp=now,
+        pools={
+            "gemini": PoolUsage("gemini", "Gemini", "Weekly", 0, None, ""),
+            "external": PoolUsage("external", "Otros", "Weekly", 0, None, ""),
+        },
+    )
+    update_state_from_usage_report(state, "a", report)
+    assert state.gemini_quota_exhausted["a"] == now.isoformat()
+    assert state.external_quota_exhausted["a"] == "2026-11-18T12:00:00+00:00"
+    assert state.is_pool_blocked("a", "gemini", now)

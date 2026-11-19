@@ -41,7 +41,15 @@ cambiar de cuenta. Cada pool tiene su propia fecha de reinicio.
 `agy` solo informa de la cuota **de la cuenta con la sesión iniciada**. AgySwitcher guarda
 ese dato en la cuenta correspondiente y muestra para las demás el último valor conocido
 (de cuando tuvieron la sesión). Por eso la cuota de una cuenta se actualiza cuando cambias
-a ella.
+a ella: `set-active` y `rotate` la consultan al terminar el cambio.
+
+Ese dato guardado puede estar desfasado. Una cuenta agotada se vuelve a tener en cuenta
+cuando llega su **reinicio previsto** (la fecha de reinicio que dio `agy` o, si no se
+conoce, siete días después de agotarse), aunque queda **sin confirmar** hasta que cambias a
+ella. Google a veces restablece la cuota antes de esa fecha: si todas las cuentas figuran
+agotadas, AgySwitcher lo indica como «según los datos guardados», muestra la antigüedad del
+dato y el reinicio previsto de cada cuenta, y te sugiere comprobar primero la de reinicio
+más próximo.
 
 ## El cambio de cuenta guiado
 

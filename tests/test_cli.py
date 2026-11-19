@@ -582,17 +582,81 @@ def test_rotate_auto_swaps_to_next_account(monkeypatch: pytest.MonkeyPatch) -> N
     assert load_state().active == "cuenta-2"
 
 
+def _recent_iso(hours: float = 1.0) -> str:
+    """Fecha ISO de hace unas horas (reinicio previsto aún lejano)."""
+    return (datetime.now(UTC) - timedelta(hours=hours)).isoformat()
+
+
 def test_rotate_auto_fails_when_all_accounts_exhausted() -> None:
     """rotate automático falla con código 1 si todas las cuentas tienen ambos pools agotados."""
     runner.invoke(app, ["add", "cuenta-1"])
     state = load_state()
-    state.gemini_quota_exhausted["cuenta-1"] = "2026-11-04T12:00:00Z"
-    state.external_quota_exhausted["cuenta-1"] = "2026-11-04T12:30:00Z"
+    state.gemini_quota_exhausted["cuenta-1"] = _recent_iso()
+    state.external_quota_exhausted["cuenta-1"] = _recent_iso()
     save_state(state)
 
     result = runner.invoke(app, ["rotate"])
     assert result.exit_code == 1
-    assert "Todas las cuentas configuradas tienen su cuota agotada" in result.output
+    assert "Según los datos guardados, todas las cuentas tienen la cuota agotada" in result.output
+    assert "cuenta-1 (activa): dato de hace" in result.output
+
+
+def test_rotate_auto_accepts_account_whose_reset_passed(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Si el reinicio previsto de otra cuenta ya pasó, rotate la propone (sin confirmar)."""
+    _login_ok(monkeypatch)
+    runner.invoke(app, ["add", "cuenta-1", "--email", "uno@example.com"])
+    runner.invoke(app, ["add", "cuenta-2", "--email", "dos@example.com", "--no-activate"])
+    state = load_state()
+    state.gemini_quota_exhausted["cuenta-1"] = _recent_iso()
+    state.external_quota_exhausted["cuenta-1"] = _recent_iso()
+    state.gemini_quota_exhausted["cuenta-2"] = _recent_iso(hours=24 * 8)
+    state.external_quota_exhausted["cuenta-2"] = _recent_iso(hours=24 * 8)
+    save_state(state)
+
+    result = runner.invoke(app, ["rotate"])
+    assert result.exit_code == 0
+    assert "sin confirmar" in result.output
+    assert load_state().active == "cuenta-2"
+
+
+def test_rotate_refreshes_quota_after_switch(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Tras el cambio, rotate consulta la cuota en vivo y levanta el agotado si ya no lo está."""
+    _login_ok(monkeypatch)
+    runner.invoke(app, ["add", "cuenta-1", "--email", "uno@example.com"])
+    runner.invoke(app, ["add", "cuenta-2", "--email", "dos@example.com", "--no-activate"])
+    state = load_state()
+    state.gemini_quota_exhausted["cuenta-1"] = _recent_iso()
+    state.external_quota_exhausted["cuenta-1"] = _recent_iso()
+    state.gemini_quota_exhausted["cuenta-2"] = _recent_iso(hours=24 * 8)
+    state.external_quota_exhausted["cuenta-2"] = _recent_iso(hours=24 * 8)
+    save_state(state)
+
+    report = UsageReport(
+        is_authenticated=True,
+        active_email="dos@example.com",
+        pools={
+            "gemini": PoolUsage("gemini", "Gemini", "Weekly", 100, None, ""),
+            "external": PoolUsage("external", "Otros", "Weekly", 0, None, ""),
+        },
+    )
+    monkeypatch.setattr("agyswitcher.cli.fetch_usage", lambda timeout=10.0: report)
+
+    result = runner.invoke(app, ["rotate"])
+    assert result.exit_code == 0
+    assert "La cuota de Gemini vuelve a estar disponible" in result.output
+    assert "Confirmado: la cuota de Otros sigue agotada" in result.output
+    final = load_state()
+    assert "cuenta-2" not in final.gemini_quota_exhausted
+    assert final.is_pool_blocked("cuenta-2", "external")
+
+
+def test_set_active_reports_when_live_quota_unavailable(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Si no se puede consultar la cuota tras el cambio, set-active lo indica."""
+    _login_ok(monkeypatch)
+    _two_accounts()
+    result = runner.invoke(app, ["set-active", "cuenta-2"])
+    assert result.exit_code == 0
+    assert "No se pudo consultar la cuota en vivo" in result.output
 
 
 # ---------------------------------------------------------------------------
@@ -1753,14 +1817,36 @@ def test_run_reports_all_accounts_exhausted() -> None:
     """Si no queda ninguna cuenta con cuota, run lo indica."""
     runner.invoke(app, ["add", "cuenta-1", "--email", "uno@example.com"])
     state = load_state()
-    state.external_quota_exhausted["cuenta-1"] = "2026-11-04T12:00:00Z"
+    state.external_quota_exhausted["cuenta-1"] = _recent_iso()
     save_state(state)
 
     with patch("agyswitcher.cli.run_agy_process", side_effect=_fake_agy([_GEMINI_429])):
         result = runner.invoke(app, ["run"])
 
-    assert "Todas las cuentas tienen la cuota agotada" in result.output
+    assert "Según los datos guardados, todas las cuentas tienen la cuota agotada" in result.output
+    assert "Comprueba primero" not in result.output  # no hay otra cuenta que comprobar
     assert load_state().active == "cuenta-1"
+
+
+def test_run_all_exhausted_suggests_account_with_earliest_reset() -> None:
+    """Con todas agotadas, run sugiere comprobar la cuenta con el reinicio previsto más próximo."""
+    runner.invoke(app, ["add", "cuenta-1", "--email", "uno@example.com"])
+    runner.invoke(app, ["add", "cuenta-2", "--email", "dos@example.com", "--no-activate"])
+    runner.invoke(app, ["add", "cuenta-3", "--email", "tres@example.com", "--no-activate"])
+    state = load_state()
+    state.external_quota_exhausted["cuenta-1"] = _recent_iso()
+    for alias, hours in (("cuenta-2", 2), ("cuenta-3", 48)):
+        state.gemini_quota_exhausted[alias] = _recent_iso(hours)
+        state.external_quota_exhausted[alias] = _recent_iso(hours)
+    save_state(state)
+
+    with patch("agyswitcher.cli.run_agy_process", side_effect=_fake_agy([_GEMINI_429])):
+        result = runner.invoke(app, ["run"])
+
+    assert "Según los datos guardados" in result.output
+    assert "cuenta-3: dato de hace 2d 0h" in result.output
+    assert "Comprueba primero 'cuenta-3' (reinicio más próximo)" in result.output
+    assert "agyswitcher set-active cuenta-3" in result.output
 
 
 def test_run_proposes_even_if_exhaustion_was_already_recorded() -> None:
