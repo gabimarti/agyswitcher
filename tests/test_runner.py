@@ -309,10 +309,14 @@ _SPAWN_GRANDCHILD = (
 
 
 def _pid_alive(pid: int) -> bool:
+    # tasklist writes its "no tasks" notice in the console code page (e.g. cp850); with
+    # errors="replace" decoding never fails, whatever Python's default encoding is.
     out = subprocess.run(
         ["tasklist", "/FI", f"PID eq {pid}", "/NH", "/FO", "CSV"],
         capture_output=True,
         text=True,
+        errors="replace",
+        stdin=subprocess.DEVNULL,
         check=False,
         timeout=10,
     ).stdout
