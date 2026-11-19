@@ -138,6 +138,6 @@ def record_rotation(
         event_desc = f"{now_iso}: {target_alias} ({target_pool}) reafirmada"
         message = f"Cuenta activa '{target_alias}' reafirmada con pool '{target_pool}'."
 
-    state.switch_history.append(event_desc)
+    state.append_history(event_desc)
     save_state(state, state_path=state_path)
     return message

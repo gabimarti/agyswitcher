@@ -17,8 +17,23 @@ y el estado global de la aplicación (AppState).
 from __future__ import annotations
 
 import contextlib
+import re
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+
+EMAIL_PATTERN = re.compile(r"^[\w.+\-]+@[\w\-]+(?:\.[\w\-]+)+$")
+"""Formato de email aceptado (mismo criterio que los patrones de los logs de agy)."""
+
+STORED_ALIAS_PATTERN = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+"""Alias admitido al cargar config.json (más permisivo que el de creación, por compatibilidad)."""
+
+MAX_SWITCH_HISTORY = 200
+"""Número máximo de entradas que se conservan en el historial de cambios."""
+
+
+def is_valid_email(value: str) -> bool:
+    """Indica si 'value' tiene formato de email admitido (sin espacios ni marcado)."""
+    return bool(EMAIL_PATTERN.match(value))
 
 
 @dataclass
@@ -113,16 +128,27 @@ class Account:
 
     @classmethod
     def from_dict(cls, data: dict[str, object]) -> Account:
+        """Crea la cuenta desde config.json.
+
+        Raises:
+            KeyError: Si faltan campos obligatorios.
+            ValueError: Si el alias o el email no tienen un formato válido.
+        """
+        alias = str(data["alias"])
+        if not STORED_ALIAS_PATTERN.match(alias):
+            raise ValueError(f"alias no válido: {alias!r}")
         email = data.get("email")
+        if isinstance(email, str) and email.strip() and not is_valid_email(email.strip()):
+            raise ValueError(f"email no válido en la cuenta {alias!r}: {email!r}")
         pref_raw = data.get("preferred_models")
         preferred_models: dict[str, str] = {}
         if isinstance(pref_raw, dict):
             preferred_models = {str(k): str(v) for k, v in pref_raw.items()}
 
         return cls(
-            alias=str(data["alias"]),
+            alias=alias,
             added_at=datetime.fromisoformat(str(data["added_at"])),
-            email=str(email) if isinstance(email, str) and email.strip() else None,
+            email=email.strip() if isinstance(email, str) and email.strip() else None,
             preferred_models=preferred_models,
         )
 
@@ -147,6 +173,12 @@ class AppState:
     external_quota_exhausted: dict[str, str] = field(default_factory=dict)
     switch_history: list[str] = field(default_factory=list)
     accounts_quota: dict[str, AccountQuotaInfo] = field(default_factory=dict)
+
+    def append_history(self, event: str) -> None:
+        """Añade un evento al historial conservando solo los MAX_SWITCH_HISTORY más recientes."""
+        self.switch_history.append(event)
+        if len(self.switch_history) > MAX_SWITCH_HISTORY:
+            del self.switch_history[: len(self.switch_history) - MAX_SWITCH_HISTORY]
 
     def is_account_fully_exhausted(self, alias: str) -> bool:
         """Devuelve True si la cuenta tiene ambos pools de cuota agotados."""
@@ -220,7 +252,7 @@ class AppState:
 
         switch_history: list[str] = []
         if isinstance(history_raw, list):
-            switch_history = [str(item) for item in history_raw]
+            switch_history = [str(item) for item in history_raw][-MAX_SWITCH_HISTORY:]
 
         accounts_quota: dict[str, AccountQuotaInfo] = {}
         if isinstance(quota_raw, dict):

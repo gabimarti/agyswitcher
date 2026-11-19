@@ -85,6 +85,15 @@ def extract_login_email(text: str) -> str | None:
     return email
 
 
+def read_log_tail(path: Path) -> str:
+    """Lee como mucho los últimos MAX_NEW_BYTES_PER_FILE bytes del log, en líneas completas.
+
+    Raises:
+        OSError: Si el fichero no se puede leer.
+    """
+    return _read_new_complete_lines(path, 0)
+
+
 def _read_new_complete_lines(path: Path, start: int) -> str:
     """Lee el contenido escrito desde 'start' hasta el último salto de línea completo."""
     with path.open("rb") as handle:

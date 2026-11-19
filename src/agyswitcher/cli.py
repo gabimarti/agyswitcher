@@ -24,6 +24,7 @@ from typing import Annotated
 import typer
 from rich import box
 from rich.console import Console
+from rich.markup import escape
 from rich.panel import Panel
 from rich.table import Table
 
@@ -35,7 +36,7 @@ from agyswitcher.ai_models import (
 )
 from agyswitcher.config import ConfigError, load_accounts, save_accounts
 from agyswitcher.dashboard import build_dashboard_view
-from agyswitcher.models import Account, AccountQuotaInfo, AppState
+from agyswitcher.models import Account, AccountQuotaInfo, AppState, is_valid_email
 from agyswitcher.project import (
     AGENT_POINTER_FILES,
     DEFAULT_AGENTS,
@@ -76,7 +77,8 @@ from agyswitcher.usage import (
 )
 from agyswitcher.version import full_version
 
-ALIAS_PATTERN = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
+ALIAS_PATTERN = re.compile(r"^[a-zA-Z0-9](?:[a-zA-Z0-9_-]{0,62}[a-zA-Z0-9])?$")
+"""Alias de una cuenta nueva: empieza y termina por letra o número (no puede parecer una opción)."""
 
 USAGE_FETCH_ERRORS: tuple[type[Exception], ...] = (RunnerError, UsageError, OSError)
 """Errores esperables al consultar la cuota con agy (incluye AgyNotFoundError y AuthRequiredError)."""
@@ -286,7 +288,8 @@ def add(
     if not ALIAS_PATTERN.match(clean_alias):
         typer.secho(
             f"Error: El alias '{alias}' no es válido. "
-            "Solo se permiten caracteres alfanuméricos, guiones y guiones bajos (1-64 caracteres).",
+            "Usa de 1 a 64 letras, números, guiones o guiones bajos, empezando y terminando por "
+            "letra o número.",
             fg=typer.colors.RED,
             err=True,
         )
@@ -306,8 +309,17 @@ def add(
         )
         raise typer.Exit(code=1)
 
+    clean_email = email.strip() if email and email.strip() else None
+    if clean_email is not None and not is_valid_email(clean_email):
+        typer.secho(
+            f"Error: '{clean_email}' no tiene formato de email válido (ejemplo: nombre@example.com).",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
     detected_email = detect_active_email()
-    target_email = email.strip() if email and email.strip() else detected_email
+    target_email = clean_email or detected_email
 
     if target_email:
         console.print(f"Sesión de Google identificada: [bold cyan]{target_email}[/bold cyan]")
@@ -1290,7 +1302,9 @@ def status(
                     with contextlib.suppress(StateError):
                         save_state(state)
             except (AgyNotFoundError, AuthRequiredError, UsageError) as err:
-                console.print(f"[bold red]Error al consultar métricas en vivo:[/bold red] {err}")
+                console.print(
+                    f"[bold red]Error al consultar métricas en vivo:[/bold red] {escape(str(err))}"
+                )
 
     _warn_low_quota(accounts, state)
 
@@ -1871,7 +1885,7 @@ def models(
             raise typer.Exit(code=1) from err
 
         console.print(
-            f"[green]✓ Modelo preferido para el pool '[cyan]{pool}[/cyan]' en '[bold]{target_alias}[/bold]' establecido en: [bold cyan]{model_id}[/bold cyan][/green]"
+            f"[green]✓ Modelo preferido para el pool '[cyan]{pool}[/cyan]' en '[bold]{target_alias}[/bold]' establecido en: [bold cyan]{escape(model_id)}[/bold cyan][/green]"
         )
         if target_alias == state.active and pool == state.active_model_group:
             console.print(
@@ -1909,7 +1923,7 @@ def models(
         pref = target_acc.get_preferred_model(m.pool)
         pref_label = "[bold yellow]★ Preferido[/bold yellow]" if pref == m.id else "[dim]-[/dim]"
 
-        table.add_row(m.id, m.display_name, pool_label, status_label, pref_label)
+        table.add_row(escape(m.id), escape(m.display_name), pool_label, status_label, pref_label)
 
     console.print(table)
 
@@ -1918,7 +1932,7 @@ def models(
     external_pref = target_acc.get_preferred_model("external") or "predeterminado por agy"
     console.print(
         f"\n[dim]Modelos preferidos actuales en '{target_alias}': "
-        f"Gemini: [bold]{gemini_pref}[/bold] | External: [bold]{external_pref}[/bold][/dim]"
+        f"Gemini: [bold]{escape(gemini_pref)}[/bold] | External: [bold]{escape(external_pref)}[/bold][/dim]"
     )
     console.print(
         "[dim]Usa [bold]agyswitcher models --set <id>[/bold] para configurar un modelo preferido.[/dim]"

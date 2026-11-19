@@ -8,6 +8,28 @@ Los ejecutables oficiales añaden un número de compilación: `MAJOR.MINOR.PATCH
 
 ## [Sin publicar]
 
+### Cambiado
+
+- Los alias nuevos deben empezar y terminar por letra o número (ya no se aceptan `-`, `_` ni
+  alias que empiecen por guion, que se confundían con opciones). Las cuentas existentes no
+  se ven afectadas.
+- `agyswitcher add --email` comprueba que el email tenga un formato válido.
+
+### Corregido
+
+- Un texto con corchetes (en un email escrito a mano o en la salida de `agy`, por ejemplo en
+  `agyswitcher models` o en los errores de `status --live`) ya no hace fallar el comando; se
+  muestra tal cual. Un `config.json` editado con un alias o email inválido da un error claro.
+- La detección de la cuenta activa lee solo el final de cada registro de `agy`.
+- El historial de cambios de cuenta conserva solo las 200 entradas más recientes.
+
+### Seguridad
+
+- Las líneas de error de cuota que se analizan se sanean (tokens, cabeceras) antes de
+  guardarse en memoria.
+- Las acciones de GitHub de los flujos de compilación, pruebas y web se fijan por SHA, con
+  actualizaciones mediante Dependabot.
+
 ## [1.1.0] - 2026-11-19
 
 `run` te indica cómo continuar cuando se agota la cuota y `add` ya no puede bloquear la consola.

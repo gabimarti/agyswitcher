@@ -1803,3 +1803,66 @@ def test_watch_keeps_account_when_other_pool_exhausted(tmp_path: Path) -> None:
     state = load_state()
     assert state.active == "cuenta-1"
     assert state.active_model_group == "gemini"
+
+
+# ---------------------------------------------------------------------------
+# Revisión de seguridad (2026-11-19): HAL-02 e INFO-02
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "bad_email", ["a[/b]@example.com", "[bold]uno@example.com", "sin-arroba", "a b@example.com"]
+)
+def test_add_rejects_invalid_email_without_traceback(bad_email: str) -> None:
+    """Un --email con formato inválido (o con marcado Rich) se rechaza con un mensaje claro."""
+    result = runner.invoke(app, ["add", "cuenta-1", "--email", bad_email])
+
+    assert result.exit_code == 1
+    assert "no tiene formato de email válido" in result.output
+    assert result.exception is None or isinstance(result.exception, SystemExit)
+    assert load_accounts() == {}
+
+
+@pytest.mark.parametrize("bad_alias", ["-", "_", "-x", "x-", "_x", "a b"])
+def test_add_rejects_aliases_that_look_like_options(bad_alias: str) -> None:
+    result = runner.invoke(app, ["add", "--email", "uno@example.com", "--", bad_alias])
+
+    assert result.exit_code == 1
+    assert "no es válido" in result.output
+    assert load_accounts() == {}
+
+
+@pytest.mark.parametrize("good_alias", ["a", "7", "mi-cuenta", "mi_cuenta_2"])
+def test_add_accepts_valid_aliases(good_alias: str) -> None:
+    result = runner.invoke(app, ["add", good_alias, "--email", "uno@example.com"])
+
+    assert result.exit_code == 0, result.output
+    assert good_alias in load_accounts()
+
+
+def test_models_table_escapes_markup_from_agy() -> None:
+    """Texto con marcado en la salida de 'agy models' no rompe la tabla."""
+    from agyswitcher.ai_models import AIModel
+
+    runner.invoke(app, ["add", "cuenta-1", "--email", "uno@example.com"])
+    fake = [AIModel(id="m-[/x]", display_name="N[/b]", pool="gemini")]
+
+    with patch("agyswitcher.cli.fetch_available_models", return_value=fake):
+        result = runner.invoke(app, ["models"])
+
+    assert result.exit_code == 0, result.output
+    assert "m-[/x]" in result.output
+    assert "N[/b]" in result.output
+
+
+def test_status_live_error_escapes_agy_output() -> None:
+    """Un error de agy con marcado se muestra literal en lugar de provocar un fallo."""
+    from agyswitcher.usage import UsageError
+
+    runner.invoke(app, ["add", "cuenta-1", "--email", "uno@example.com"])
+
+    with patch("agyswitcher.cli.fetch_usage", side_effect=UsageError("salida [/bold cyan] rara")):
+        result = runner.invoke(app, ["status", "--live"])
+
+    assert result.exit_code == 0, result.output
+    assert "salida [/bold cyan] rara" in result.output

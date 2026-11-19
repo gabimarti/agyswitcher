@@ -95,3 +95,14 @@ def test_detect_in_multiline_text() -> None:
     assert len(events) == 2
     assert events[0].pool == "gemini"
     assert events[1].pool == "external"
+
+
+def test_quota_event_raw_message_is_sanitized() -> None:
+    """INFO-03: la línea guardada en el evento no conserva tokens."""
+    detector = QuotaDetector()
+    event = detector.detect_in_line(
+        "429 Quota exceeded for gemini (Authorization: Bearer ya29.FAKE_TOKEN_value)"
+    )
+    assert event is not None
+    assert "ya29.FAKE_TOKEN_value" not in event.raw_message
+    assert "[REDACTED]" in event.raw_message

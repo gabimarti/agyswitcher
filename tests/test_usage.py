@@ -327,3 +327,35 @@ def test_update_state_from_usage_report() -> None:
     update_state_from_usage_report(state, "amanda", report_recovered, sync_cooldowns=True)
     assert state.accounts_quota["amanda"].external_percent == 100
     assert "amanda" not in state.external_quota_exhausted  # cooldown levantado
+
+
+# ---------------------------------------------------------------------------
+# Revisión de seguridad (2026-11-19): INFO-01 y emails detectados válidos
+# ---------------------------------------------------------------------------
+
+
+def test_detect_active_email_reads_only_the_end_of_big_logs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Solo se lee el final de cada log: un evento anterior a ese tramo no cuenta."""
+    monkeypatch.setattr("agyswitcher.session.MAX_NEW_BYTES_PER_FILE", 1024)
+    cli_log = tmp_path / "cli.log"
+    cli_log.write_text(
+        "OAuth: authenticated successfully as viejo@example.com\n" + ("x" * 80 + "\n") * 100,
+        encoding="utf-8",
+    )
+    assert detect_active_email(base_dir=tmp_path) is None
+
+    with cli_log.open("a", encoding="utf-8") as handle:
+        handle.write("OAuth: authenticated successfully as nuevo@example.com\n")
+    assert detect_active_email(base_dir=tmp_path) == "nuevo@example.com"
+
+
+def test_detect_active_email_ignores_malformed_addresses(tmp_path: Path) -> None:
+    cli_log = tmp_path / "cli.log"
+    cli_log.write_text(
+        "OAuth: authenticated successfully as valido@example.com\n"
+        "OAuth: authenticated successfully as sin-dominio@localhost\n",
+        encoding="utf-8",
+    )
+    assert detect_active_email(base_dir=tmp_path) == "valido@example.com"

@@ -315,3 +315,68 @@ def test_home_is_isolated_in_tests() -> None:
     fake_home = Path(os.environ["USERPROFILE"])
     for path in (default_live_dir(), default_config_path()):
         assert fake_home in path.parents
+
+
+# ---------------------------------------------------------------------------
+# Revisión de seguridad (2026-11-19): HAL-02 (validación al cargar) y HAL-04
+# ---------------------------------------------------------------------------
+
+
+def _write_config(path: Path, alias: str, email: str | None) -> None:
+    account: dict[str, object] = {"alias": alias, "added_at": "2026-11-19T10:00:00+00:00"}
+    if email is not None:
+        account["email"] = email
+    path.write_text(json.dumps({"accounts": {alias: account}}), encoding="utf-8")
+
+
+@pytest.mark.parametrize(
+    ("alias", "email"),
+    [
+        ("cuenta-1", "a[/b]@example.com"),
+        ("cuenta-1", "no-es-email"),
+        ("[bold]x", "uno@example.com"),
+    ],
+)
+def test_load_accounts_rejects_invalid_alias_or_email(
+    tmp_path: Path, alias: str, email: str
+) -> None:
+    """Un config.json editado a mano con valores inválidos da un error claro, no un fallo posterior."""
+    path = tmp_path / "config.json"
+    _write_config(path, alias, email)
+
+    with pytest.raises(ConfigError, match="no válido"):
+        load_accounts(config_path=path)
+
+
+def test_load_accounts_keeps_legacy_aliases(tmp_path: Path) -> None:
+    """Los alias que ya no se pueden crear (p. ej. '-x') siguen cargando."""
+    path = tmp_path / "config.json"
+    _write_config(path, "-x", "uno@example.com")
+
+    accounts = load_accounts(config_path=path)
+
+    assert accounts["-x"].email == "uno@example.com"
+
+
+def test_switch_history_is_capped_when_appending() -> None:
+    from agyswitcher.models import MAX_SWITCH_HISTORY
+
+    state = AppState()
+    for i in range(MAX_SWITCH_HISTORY + 10):
+        state.append_history(f"evento-{i}")
+
+    assert len(state.switch_history) == MAX_SWITCH_HISTORY
+    assert state.switch_history[0] == "evento-10"
+    assert state.switch_history[-1] == f"evento-{MAX_SWITCH_HISTORY + 9}"
+
+
+def test_switch_history_is_capped_when_loading(tmp_path: Path) -> None:
+    from agyswitcher.models import MAX_SWITCH_HISTORY
+
+    path = tmp_path / "state.json"
+    entries = [f"evento-{i}" for i in range(MAX_SWITCH_HISTORY + 50)]
+    path.write_text(json.dumps({"switch_history": entries}), encoding="utf-8")
+
+    state = load_state(state_path=path)
+
+    assert state.switch_history == entries[-MAX_SWITCH_HISTORY:]

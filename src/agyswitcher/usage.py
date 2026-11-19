@@ -24,8 +24,9 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 
-from agyswitcher.models import AppState
+from agyswitcher.models import AppState, is_valid_email
 from agyswitcher.runner import RunnerError, find_agy_executable, run_captured, sanitize_line
+from agyswitcher.session import read_log_tail
 
 _AUTH_ERROR_PATTERNS = [
     re.compile(r"(?i)\b(?:please\s+log\s+in|not\s+logged\s+in|authentication\s+required)\b"),
@@ -51,7 +52,8 @@ def detect_active_email(
 
     Inspecciona en modo solo-lectura las líneas recientes de cli.log y archivos
     rotados en ~/.gemini/antigravity-cli/log, buscando eventos de autenticación
-    satisfactoria. No accede a tokens, cookies ni secretos.
+    satisfactoria. No accede a tokens, cookies ni secretos. De cada fichero solo lee
+    el final (MAX_NEW_BYTES_PER_FILE) y solo devuelve emails con formato válido.
     Ordena todos los archivos de registro por fecha de modificación para evaluar
     siempre la sesión más reciente.
 
@@ -86,7 +88,7 @@ def detect_active_email(
 
     for log_path in candidates[:10]:
         try:
-            text = log_path.read_text(encoding="utf-8", errors="replace")
+            text = read_log_tail(log_path)
         except OSError:
             continue
 
@@ -96,7 +98,7 @@ def detect_active_email(
                 match = pattern.search(line)
                 if match:
                     email = match.group(1).strip()
-                    if email and "@" in email:
+                    if is_valid_email(email):
                         return email
     return None
 

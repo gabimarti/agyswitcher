@@ -123,7 +123,8 @@ etiqueta `vX.Y.Z`, con el número de ejecución como número de compilación.
 AgySwitcher guarda sus datos en `%USERPROFILE%\.agyswitcher\` (`config.json` con tus
 cuentas y `state.json` con la cuenta activa, las cuotas y el historial). Se crea sola la
 primera vez. Si defines la variable de entorno `AGYSWITCHER_HOME`, se usa esa carpeta en su
-lugar.
+lugar: elige una carpeta privada de tu usuario, porque contiene los emails de tus cuentas y
+hereda los permisos de la carpeta donde la pongas.
 
 Siguiente paso: lee los [conceptos](conceptos.md) y registra tus cuentas con
 [`add`](comandos.md#add).

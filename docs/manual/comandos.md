@@ -24,7 +24,9 @@ Todas las órdenes muestran su ayuda con `--help` (por ejemplo, `agyswitcher add
 
 ## add
 
-Registra una cuenta con un alias (letras, números, `-` y `_`; hasta 64 caracteres).
+Registra una cuenta con un alias: hasta 64 letras, números, `-` y `_`, empezando y terminando
+por letra o número (por ejemplo `personal` o `cuenta-2`). El email debe tener un formato válido
+(`nombre@example.com`).
 
 ```powershell
 agyswitcher add personal                         # detecta el email de la sesión de agy

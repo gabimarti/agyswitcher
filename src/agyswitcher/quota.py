@@ -22,6 +22,8 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Final
 
+from agyswitcher.runner import sanitize_line
+
 # Patrones generales de cuota agotada o limitación de tasa (HTTP 429 / RESOURCE_EXHAUSTED)
 QUOTA_PATTERNS: Final[list[re.Pattern[str]]] = [
     re.compile(r"(?i)\b(?:quota\s+exceeded|exhausted\s+(?:your\s+)?quota|out\s+of\s+quota)\b"),
@@ -102,7 +104,7 @@ class QuotaDetector:
                 target_pool = self.determine_pool(clean_line)
                 return QuotaEvent(
                     pool=target_pool,
-                    raw_message=clean_line,
+                    raw_message=sanitize_line(clean_line),
                     detected_pattern=detected_kw,
                 )
 
