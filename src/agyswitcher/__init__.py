@@ -2,5 +2,5 @@
 # Copyright (C) 2026 Gabriel Marti
 """AgySwitcher — Gestor de cuentas y cuotas para Antigravity CLI (agy) en Windows."""
 
-__version__ = "1.0.0"
+__version__ = "1.1.0"
 __app_name__ = "agyswitcher"

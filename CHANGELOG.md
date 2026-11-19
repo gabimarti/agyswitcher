@@ -8,6 +8,10 @@ Los ejecutables oficiales añaden un número de compilación: `MAJOR.MINOR.PATCH
 
 ## [Sin publicar]
 
+## [1.1.0] - 2026-11-19
+
+`run` te indica cómo continuar cuando se agota la cuota y `add` ya no puede bloquear la consola.
+
 ### Añadido
 
 - `agyswitcher run`: si se agota la cuota mientras usas `agy`, avisa en el momento y, al

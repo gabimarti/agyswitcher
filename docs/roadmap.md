@@ -166,6 +166,7 @@ flowchart TD
 
 ### Fase 8: Empaquetado Autónomo y Distribución en Windows (Desktop Standalone)
 - [x] **Lanzamiento v1.0.0** *(2026-11-18)*: primera versión pública, con instalador, ZIP portable y SHA-256 en *Releases* y web en GitHub Pages.
+- [x] **v1.1.0** *(2026-11-19)*: `run` propone cómo continuar al agotarse la cuota; consultas a `agy` con tiempo máximo garantizado (`add` ya no bloquea la consola).
 - [x] **Manual y tutoriales** *(L2)*: `docs/manual/` (instalación, conceptos, comandos, continuidad, problemas frecuentes, desinstalación) y `docs/tutoriales/` (proyecto nuevo y existente); `init --merge`; README reducido; ayudas de comandos al día; `remove` ya no activa otra cuenta sin sesión. Suite: **209 tests**.
 - [x] **Versión única y revisión** *(v0.9.0)*: `__version__` como fuente única (pyproject la lee con hatch), número de compilación en `_build.py` para los ejecutables (`MAJOR.MINOR.PATCH.BUILD`), `agyswitcher --version`, `CHANGELOG.md` y variable `AGYSWITCHER_HOME`. Suite: **202 tests**.
 - [x] **Preparación del repositorio público** *(L4)*: licencia GPL-3.0-or-later con cabeceras SPDX, `CONTRIBUTING.md`, `SECURITY.md`, plantillas de issues, metadatos del paquete y auditoría de privacidad (sin datos reales, rutas personales ni secretos). Suite: **214 tests**.
