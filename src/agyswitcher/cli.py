@@ -1652,6 +1652,59 @@ def rotate(
     typer.secho(msg, fg=typer.colors.GREEN)
 
 
+def _propose_after_exhaustion(accounts: dict[str, Account], state: AppState) -> str | None:
+    """Reacciona a una cuota agotada de la cuenta activa (ya registrada en ``state``).
+
+    Si el pool activo sigue disponible no hace nada. Si la cuenta activa aún tiene el otro
+    pool, cambia de pool (no requiere iniciar sesión). Si no, propone la siguiente cuenta con
+    cuota y el comando para cambiar, sin cambiarla: eso exige iniciar sesión en agy.
+
+    Args:
+        accounts: Cuentas registradas.
+        state: Estado actual (se modifica y guarda si se cambia de pool).
+
+    Returns:
+        El pool nuevo si se cambió de pool en la cuenta activa; None en otro caso.
+
+    Raises:
+        StateError: Si no se puede guardar el cambio de pool.
+    """
+    active = state.active
+    current_pool = state.active_model_group
+    exhausted = (
+        state.gemini_quota_exhausted if current_pool == "gemini" else state.external_quota_exhausted
+    )
+    if active is not None and active not in exhausted:
+        typer.secho(
+            f"Los modelos del pool activo ({current_pool}) siguen disponibles en '{active}'.",
+            fg=typer.colors.CYAN,
+        )
+        return None
+
+    candidate = select_next_candidate(accounts, state)
+    if candidate and candidate[0] == active:
+        # Misma cuenta, otro pool: no requiere iniciar sesión.
+        rot_msg = record_rotation(candidate[0], candidate[1], state)
+        typer.secho(f"⚡ {rot_msg}", fg=typer.colors.GREEN)
+        return candidate[1]
+    if candidate:
+        # Cambiar de cuenta exige iniciar sesión: solo se propone.
+        next_alias = candidate[0]
+        next_email = accounts[next_alias].email or "(sin email)"
+        typer.secho(
+            f"Siguiente cuenta con cuota: '{next_alias}' ({next_email}). "
+            f"Para cambiar: agyswitcher set-active {next_alias}",
+            fg=typer.colors.CYAN,
+        )
+        typer.secho(
+            "Si el agente aún responde, guarda antes el estado: agyswitcher handoff save",
+            fg=typer.colors.CYAN,
+        )
+    else:
+        typer.secho("Todas las cuentas tienen la cuota agotada.", fg=typer.colors.RED)
+    return None
+
+
 @app.command(
     help=(
         "Supervisa los logs de agy; al detectar cuota agotada cambia de pool o propone la "
@@ -1724,31 +1777,9 @@ def watch(
                                 f"\n[!] Detectada cuota agotada ({event.pool}) en cuenta '{state.active}'.",
                                 fg=typer.colors.YELLOW,
                             )
-                            candidate = select_next_candidate(accounts, state)
-                            if candidate and candidate[0] == state.active:
-                                # Misma cuenta, otro pool: no requiere iniciar sesión.
-                                rot_msg = record_rotation(candidate[0], candidate[1], state)
-                                typer.secho(f"⚡ {rot_msg}", fg=typer.colors.GREEN)
-                                detector.default_pool = candidate[1]
-                            elif candidate:
-                                # Cambiar de cuenta exige iniciar sesión: solo se propone.
-                                next_alias = candidate[0]
-                                next_email = accounts[next_alias].email or "(sin email)"
-                                typer.secho(
-                                    f"Siguiente cuenta con cuota: '{next_alias}' ({next_email}). "
-                                    f"Para cambiar: agyswitcher set-active {next_alias}",
-                                    fg=typer.colors.CYAN,
-                                )
-                                typer.secho(
-                                    "Si el agente aún responde, guarda antes el estado: "
-                                    "agyswitcher handoff save",
-                                    fg=typer.colors.CYAN,
-                                )
-                            else:
-                                typer.secho(
-                                    "Todas las cuentas tienen la cuota agotada.",
-                                    fg=typer.colors.RED,
-                                )
+                            new_pool = _propose_after_exhaustion(accounts, state)
+                            if new_pool is not None:
+                                detector.default_pool = new_pool
                 except OSError as err:
                     typer.secho(f"Error al leer log: {err}", fg=typer.colors.RED, err=True)
 
@@ -1895,7 +1926,10 @@ def models(
 
 
 @app.command(
-    help="Ejecuta agy detectando la cuota agotada y avisando de cuota baja. Ejemplo: agyswitcher run -- --help",
+    help=(
+        "Ejecuta agy detectando la cuota agotada (y proponiendo cómo continuar) y avisando de "
+        "cuota baja. Ejemplo: agyswitcher run -- --help"
+    ),
 )
 def run(
     args: Annotated[list[str] | None, typer.Argument(help="Argumentos a pasar a agy.")] = None,
@@ -1943,10 +1977,19 @@ def run(
 
     # Lanzar agy con los argumentos proporcionados y monitorizar cuota en tiempo real
     detector = QuotaDetector(default_pool=state.active_model_group)
+    detected_pools: list[str] = []
 
     def _on_process_line(line: str) -> None:
         event = detector.detect_in_line(line)
         if event is not None and state.active is not None:
+            if event.pool not in detected_pools:
+                detected_pools.append(event.pool)
+                typer.secho(
+                    f"[AgySwitcher] Cuota agotada ({event.pool}) en '{state.active}'. "
+                    "Al salir de agy te indicaré cómo continuar.",
+                    fg=typer.colors.YELLOW,
+                    err=True,
+                )
             now_iso = event.timestamp.isoformat()
             changed = False
             if event.pool == "gemini" and state.active not in state.gemini_quota_exhausted:
@@ -1976,6 +2019,25 @@ def run(
             err=True,
         )
         raise typer.Exit(code=1) from err
+
+    if detected_pools:
+        typer.secho(
+            f"\n[!] Durante la ejecución se agotó la cuota ({', '.join(detected_pools)}) "
+            f"en la cuenta '{state.active}'.",
+            fg=typer.colors.YELLOW,
+        )
+        try:
+            new_pool = _propose_after_exhaustion(accounts, state)
+        except StateError as err:
+            typer.secho(
+                f"No se pudo guardar el cambio de pool: {err}", fg=typer.colors.RED, err=True
+            )
+        else:
+            if new_pool is not None:
+                typer.secho(
+                    "Vuelve a ejecutar agyswitcher run para continuar con esos modelos.",
+                    fg=typer.colors.CYAN,
+                )
 
     sys.exit(exit_code)
 

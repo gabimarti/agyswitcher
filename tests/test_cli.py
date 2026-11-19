@@ -1696,3 +1696,110 @@ def test_status_live_stores_quota_in_report_owner(monkeypatch: pytest.MonkeyPatc
     state = load_state()
     assert state.accounts_quota.get("cuenta-1") is None
     assert state.accounts_quota["cuenta-2"].gemini_percent == 7
+
+
+# ---------------------------------------------------------------------------
+# run: propuesta de cómo continuar tras una cuota agotada (5f)
+# ---------------------------------------------------------------------------
+
+_GEMINI_429 = "google.api_core.exceptions.ResourceExhausted: 429 Quota exceeded for gemini\n"
+_CLAUDE_429 = "RESOURCE_EXHAUSTED: 429 Quota exceeded for claude-sonnet\n"
+
+
+def _fake_agy(lines: list[str], code: int = 1) -> object:
+    def _runner(args: list[str], *, on_line: object = None, **_kwargs: object) -> int:
+        for line in lines:
+            if callable(on_line):
+                on_line(line)
+        return code
+
+    return _runner
+
+
+def test_run_proposes_next_account_when_active_fully_exhausted() -> None:
+    """Con los dos pools de la activa agotados, run propone la siguiente cuenta sin cambiarla."""
+    _two_accounts()
+    state = load_state()
+    state.external_quota_exhausted["cuenta-1"] = "2026-11-04T12:00:00Z"
+    save_state(state)
+
+    with patch("agyswitcher.cli.run_agy_process", side_effect=_fake_agy([_GEMINI_429])):
+        result = runner.invoke(app, ["run"])
+
+    assert result.exit_code == 1
+    assert "Cuota agotada (gemini) en 'cuenta-1'" in result.output
+    assert "Durante la ejecución se agotó la cuota (gemini)" in result.output
+    assert "Siguiente cuenta con cuota: 'cuenta-2' (dos@example.com)" in result.output
+    assert "agyswitcher set-active cuenta-2" in result.output
+    assert "agyswitcher handoff save" in result.output
+    assert load_state().active == "cuenta-1"
+
+
+def test_run_switches_pool_when_other_pool_available() -> None:
+    """Si la activa aún tiene el otro pool, run cambia de pool al terminar agy."""
+    _two_accounts()
+
+    with patch("agyswitcher.cli.run_agy_process", side_effect=_fake_agy([_GEMINI_429])):
+        result = runner.invoke(app, ["run"])
+
+    assert result.exit_code == 1
+    assert "Vuelve a ejecutar agyswitcher run" in result.output
+    state = load_state()
+    assert state.active == "cuenta-1"
+    assert state.active_model_group == "external"
+
+
+def test_run_reports_all_accounts_exhausted() -> None:
+    """Si no queda ninguna cuenta con cuota, run lo indica."""
+    runner.invoke(app, ["add", "cuenta-1", "--email", "uno@example.com"])
+    state = load_state()
+    state.external_quota_exhausted["cuenta-1"] = "2026-11-04T12:00:00Z"
+    save_state(state)
+
+    with patch("agyswitcher.cli.run_agy_process", side_effect=_fake_agy([_GEMINI_429])):
+        result = runner.invoke(app, ["run"])
+
+    assert "Todas las cuentas tienen la cuota agotada" in result.output
+    assert load_state().active == "cuenta-1"
+
+
+def test_run_proposes_even_if_exhaustion_was_already_recorded() -> None:
+    """La propuesta aparece aunque la cuota agotada ya constara en el estado."""
+    _two_accounts()
+    state = load_state()
+    state.gemini_quota_exhausted["cuenta-1"] = "2026-11-04T12:00:00Z"
+    state.external_quota_exhausted["cuenta-1"] = "2026-11-04T12:00:00Z"
+    save_state(state)
+
+    with patch("agyswitcher.cli.run_agy_process", side_effect=_fake_agy([_GEMINI_429] * 3)):
+        result = runner.invoke(app, ["run"])
+
+    assert result.output.count("[AgySwitcher] Cuota agotada") == 1
+    assert "agyswitcher set-active cuenta-2" in result.output
+
+
+def test_run_without_quota_errors_prints_no_proposal() -> None:
+    _two_accounts()
+
+    with patch("agyswitcher.cli.run_agy_process", side_effect=_fake_agy(["hola\n"], code=0)):
+        result = runner.invoke(app, ["run"])
+
+    assert result.exit_code == 0
+    assert "Siguiente cuenta" not in result.output
+    assert "Durante la ejecución" not in result.output
+
+
+def test_watch_keeps_account_when_other_pool_exhausted(tmp_path: Path) -> None:
+    """Si se agota el pool que no está en uso, no se propone cambiar de cuenta."""
+    _two_accounts()
+    fake_log = tmp_path / "cli.log"
+    fake_log.write_text(_CLAUDE_429, encoding="utf-8")
+
+    result = runner.invoke(app, ["watch", "--once", "--log-file", str(fake_log)])
+
+    assert result.exit_code == 0
+    assert "siguen disponibles" in result.output
+    assert "Siguiente cuenta" not in result.output
+    state = load_state()
+    assert state.active == "cuenta-1"
+    assert state.active_model_group == "gemini"

@@ -8,8 +8,16 @@ Los ejecutables oficiales añaden un número de compilación: `MAJOR.MINOR.PATCH
 
 ## [Sin publicar]
 
+### Añadido
+
+- `agyswitcher run`: si se agota la cuota mientras usas `agy`, avisa en el momento y, al
+  salir, cambia al otro pool de la misma cuenta o propone la siguiente cuenta con cuota y el
+  comando para cambiar (como `watch`).
+
 ### Corregido
 
+- `agyswitcher watch` ya no propone cambiar de cuenta cuando se agota el pool que no estás
+  usando.
 - `agyswitcher add` (y cualquier consulta de cuota o de modelos) podía dejar la consola
   bloqueada si `agy` no terminaba a tiempo: ahora la espera tiene un límite real, se
   termina `agy` con todos sus procesos y `agy` nunca se queda esperando entrada de teclado.

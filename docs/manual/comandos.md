@@ -132,6 +132,15 @@ lanzar avisa si la cuota es baja. Todo lo que va después de `--` se pasa a `agy
 un modelo preferido para el pool activo (ver [`models`](#models)), se añade `--model`
 automáticamente salvo que indiques otro.
 
+Si durante la ejecución se agota la cuota, muestra un aviso en ese momento y, al salir de
+`agy`, te indica cómo continuar, igual que [`watch`](#watch):
+
+- si la cuenta tiene libre el otro pool, cambia de pool (vuelve a lanzar `agyswitcher run`);
+- si no, **propone** la siguiente cuenta con cuota y el comando para cambiar, y te recuerda
+  guardar el estado (`handoff save`). No cambia de cuenta por sí mismo.
+
+Si lo que se agota es el pool que no estás usando, no propone ningún cambio.
+
 ```powershell
 agyswitcher run -- --help
 agyswitcher run -- --model claude-sonnet-4-6 -p "Hola"
@@ -145,6 +154,8 @@ Al detectar cuota agotada la anota y:
 - si la cuenta tiene libre el otro pool, cambia de pool;
 - si no, **propone** la siguiente cuenta con cuota y el comando para cambiar, y te recuerda
   guardar el estado (`handoff save`). No cambia de cuenta por sí mismo.
+
+Si lo que se agota es el pool que no estás usando, solo lo anota.
 
 | Opción | Descripción |
 | :--- | :--- |
