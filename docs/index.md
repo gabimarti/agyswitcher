@@ -5,6 +5,8 @@ hide:
 
 # AgySwitcher
 
+*Switch accounts. Keep coding.*
+
 **Trabaja con varias cuentas de Google en Antigravity CLI (`agy`) y sigue con el mismo
 proyecto cuando una cuenta se queda sin cuota.**
 

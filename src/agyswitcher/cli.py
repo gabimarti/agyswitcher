@@ -89,7 +89,7 @@ console = Console()
 
 app = typer.Typer(
     name=__app_name__,
-    help="Gestor de cuentas y cuotas para Antigravity CLI (agy) en Windows.",
+    help="Gestor de cuentas y cuotas para Antigravity CLI (agy) en Windows.\n\nSwitch accounts. Keep coding.",
     add_completion=False,
     no_args_is_help=True,
 )

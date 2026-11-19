@@ -1,5 +1,7 @@
 # AgySwitcher
 
+*Switch accounts. Keep coding.*
+
 **AgySwitcher** es una herramienta para Windows que te ayuda a trabajar con **varias cuentas
 de Google en Antigravity CLI (`agy`)** y a **seguir con el mismo proyecto** cuando una cuenta
 agota su cuota.
@@ -70,9 +72,8 @@ Web con el manual completo: **[gabimarti.github.io/agyswitcher](https://gabimart
 
 ## Versiones
 
-AgySwitcher sigue el versionado semántico (`MAJOR.MINOR.PATCH`); los ejecutables oficiales
-añaden un número de compilación. Consulta tu versión con `agyswitcher --version` y los
-cambios de cada versión en [CHANGELOG.md](CHANGELOG.md).
+Consulta tu versión con `agyswitcher --version` y los cambios de cada versión en
+[CHANGELOG.md](CHANGELOG.md).
 
 ## Autoría y contacto
 

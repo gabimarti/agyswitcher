@@ -2,10 +2,6 @@
 
 Todos los cambios relevantes de AgySwitcher se documentan en este fichero.
 
-El formato se basa en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el
-proyecto sigue el [versionado semántico](https://semver.org/lang/es/) (`MAJOR.MINOR.PATCH`).
-Los ejecutables oficiales añaden un número de compilación: `MAJOR.MINOR.PATCH.BUILD`.
-
 ## [Sin publicar]
 
 ### Añadido

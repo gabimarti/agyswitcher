@@ -110,13 +110,13 @@ Requiere PyInstaller (`python -m pip install -e ".[build]"`) e
 `winget install JRSoftware.InnoSetup`).
 
 ```powershell
-.\packaging\build.ps1                 # compilación local (número de compilación 0)
+.\packaging\build.ps1                 # compilación local
 .\packaging\build.ps1 -SkipInstaller  # solo el ejecutable y el ZIP
 ```
 
 El resultado queda en `dist\`: la carpeta del ejecutable, el ZIP portable, el instalador y
 `SHA256SUMS.txt`. Las versiones oficiales las compila GitHub Actions al publicar una
-etiqueta `vX.Y.Z`, con el número de ejecución como número de compilación.
+etiqueta de versión.
 
 ## Primer arranque
 

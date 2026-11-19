@@ -1,5 +1,7 @@
 # Manual de AgySwitcher
 
+*Switch accounts. Keep coding.*
+
 AgySwitcher te ayuda a trabajar con **varias cuentas de Google en Antigravity CLI (`agy`)**:
 sabe cuánta cuota le queda a cada una, te avisa antes de que se agote, te indica la
 siguiente cuenta disponible, te guía al cambiar de cuenta y comprueba que lo has hecho bien.
