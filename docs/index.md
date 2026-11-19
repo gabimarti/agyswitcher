@@ -33,8 +33,9 @@ reinicia cada una se vuelve un trabajo en sí mismo.
 
 - **Aviso a tiempo**
 
-    Cuando la cuota baja del 15 %, te avisa para que el agente guarde el estado del
-    proyecto **antes** de quedarse sin tokens.
+    Cuando la cuota baja del 15 % (configurable), te avisa y te deja en el portapapeles la
+    instrucción para que el agente guarde el estado del proyecto **antes** de quedarse sin
+    tokens.
 
 - **Cambio de cuenta guiado y verificado**
 

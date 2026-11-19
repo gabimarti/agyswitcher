@@ -58,7 +58,9 @@ al pool activo le quede un 15 % o menos, verás:
 
 ```text
 [!] Cuota baja en 'personal' (Gemini: 12 % restante, umbral 15 %). Antes de que se agote,
-pide a agy que guarde el estado del proyecto: ejecuta agyswitcher handoff save ...
+pide a agy que guarde el estado del proyecto.
+La instrucción para guardar el estado está en el portapapeles: pégala en agy (también la
+muestra agyswitcher handoff save).
 Siguiente cuenta con cuota: 'trabajo'.
 ```
 

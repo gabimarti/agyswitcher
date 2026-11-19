@@ -34,17 +34,28 @@ from agyswitcher.ai_models import (
     fetch_available_models,
     inject_preferred_model_args,
 )
-from agyswitcher.config import ConfigError, load_accounts, save_accounts
+from agyswitcher.clipboard import copy_to_clipboard
+from agyswitcher.config import (
+    LOW_QUOTA_MAX,
+    LOW_QUOTA_MIN,
+    ConfigError,
+    Settings,
+    default_config_path,
+    load_accounts,
+    load_settings,
+    save_accounts,
+    save_settings,
+)
 from agyswitcher.dashboard import build_dashboard_view
 from agyswitcher.models import Account, AccountQuotaInfo, AppState, is_valid_email
 from agyswitcher.project import (
     AGENT_POINTER_FILES,
     DEFAULT_AGENTS,
-    LOW_QUOTA_PERCENT,
     ProjectError,
     load_handoff_prompts,
     low_quota_percent,
     parse_agents,
+    resolve_low_quota_threshold,
     scaffold_project,
 )
 from agyswitcher.quota import QuotaDetector
@@ -138,6 +149,19 @@ def _print_prompt(title: str, text: str) -> None:
     console.rule()
 
 
+def _load_settings_or_default() -> Settings:
+    """Ajustes globales; si config.json no se puede leer, los de por defecto."""
+    try:
+        return load_settings()
+    except ConfigError:
+        return Settings()
+
+
+def _auto_copy(text: str) -> bool:
+    """Copia 'text' al portapapeles si la copia automática está activada. True si se copió."""
+    return _load_settings_or_default().auto_copy and copy_to_clipboard(text)
+
+
 def _print_resume_hint() -> None:
     """Tras un cambio de cuenta verificado, muestra la instrucción para retomar el proyecto."""
     prompts = load_handoff_prompts(Path.cwd())
@@ -146,6 +170,8 @@ def _print_resume_hint() -> None:
         "instrucción en agy:"
     )
     _print_prompt("Retomar", prompts.resume)
+    if _auto_copy(prompts.resume):
+        console.print("[dim]Instrucción copiada al portapapeles.[/dim]")
 
 
 def _warn_low_quota(accounts: dict[str, Account], state: AppState) -> None:
@@ -153,17 +179,33 @@ def _warn_low_quota(accounts: dict[str, Account], state: AppState) -> None:
     alias = state.active
     if not alias or alias not in accounts:
         return
+    settings = _load_settings_or_default()
+    threshold = resolve_low_quota_threshold(Path.cwd(), settings.low_quota_percent)
+    if threshold.error:
+        console.print(
+            f"[yellow]Umbral de cuota baja de {threshold.project_file} ignorado: "
+            f"{escape(threshold.error)}.[/yellow]"
+        )
     pool = state.active_model_group
-    pct = low_quota_percent(state.accounts_quota.get(alias), pool)
+    pct = low_quota_percent(state.accounts_quota.get(alias), pool, threshold.percent)
     if pct is None:
         return
     pool_name = "Gemini" if pool == "gemini" else "Otros"
     console.print(
         f"\n[bold yellow][!] Cuota baja en '{alias}' ({pool_name}: {pct} % restante, umbral "
-        f"{LOW_QUOTA_PERCENT} %).[/bold yellow] Antes de que se agote, pide a agy que guarde el "
-        "estado del proyecto: ejecuta [bold cyan]agyswitcher handoff save[/bold cyan] y pega "
-        "la instrucción en agy."
+        f"{threshold.percent} %).[/bold yellow] Antes de que se agote, pide a agy que guarde el "
+        "estado del proyecto."
     )
+    save_prompt = load_handoff_prompts(Path.cwd()).save
+    if settings.auto_copy and copy_to_clipboard(save_prompt):
+        console.print(
+            "La instrucción para guardar el estado está en el portapapeles: pégala en agy "
+            "(también la muestra [bold cyan]agyswitcher handoff save[/bold cyan])."
+        )
+    else:
+        console.print(
+            "Ejecuta [bold cyan]agyswitcher handoff save[/bold cyan] y pega la instrucción en agy."
+        )
     candidate = select_next_candidate(accounts, state)
     if candidate and candidate[0] != alias:
         console.print(f"[dim]Siguiente cuenta con cuota: '{candidate[0]}'.[/dim]")
@@ -826,7 +868,7 @@ def init_project(
     help=(
         "Muestra las instrucciones para traspasar el trabajo entre cuentas o agentes: 'save' "
         "(guardar el estado antes de cambiar) y 'resume' (retomar después). Se personalizan en "
-        ".agyswitcher.toml. Ejemplo: agyswitcher handoff save"
+        ".agyswitcher.toml. Ejemplo: agyswitcher handoff save --copy"
     ),
 )
 def handoff(
@@ -834,11 +876,22 @@ def handoff(
         str,
         typer.Argument(help="'save', 'resume' o 'all' (por defecto)."),
     ] = "all",
+    copy: Annotated[
+        bool,
+        typer.Option("--copy", "-c", help="Copiar también la instrucción al portapapeles."),
+    ] = False,
 ) -> None:
     """Muestra las instrucciones de traspaso del proyecto actual."""
     choice = which.strip().lower()
     if choice not in {"save", "resume", "all"}:
         typer.secho("Error: usa 'save', 'resume' o 'all'.", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1)
+    if copy and choice == "all":
+        typer.secho(
+            "Error: con --copy indica qué instrucción copiar: 'save' o 'resume'.",
+            fg=typer.colors.RED,
+            err=True,
+        )
         raise typer.Exit(code=1)
     prompts = load_handoff_prompts(Path.cwd())
     if prompts.error:
@@ -859,6 +912,117 @@ def handoff(
     if choice in {"resume", "all"}:
         console.print("\n[bold]Después de cambiar de cuenta[/bold], pega esto en agy:")
         _print_prompt("Retomar", prompts.resume)
+    if copy:
+        text = prompts.save if choice == "save" else prompts.resume
+        if copy_to_clipboard(text):
+            console.print("[green]✓ Instrucción copiada al portapapeles.[/green]")
+        else:
+            typer.secho(
+                "No se pudo copiar al portapapeles; copia el texto de arriba.",
+                fg=typer.colors.YELLOW,
+            )
+
+
+_ON_VALUES = {"on", "si", "sí", "true", "1"}
+_OFF_VALUES = {"off", "no", "false", "0"}
+
+
+def _show_settings(settings: Settings) -> None:
+    """Muestra los ajustes globales y el umbral efectivo en la carpeta actual."""
+    low = settings.low_quota_percent
+    console.print(f"Ajustes de AgySwitcher ([dim]{default_config_path()}[/dim]):")
+    console.print(
+        f"  low-quota  Umbral de cuota baja: "
+        f"{f'{low} %' if low is not None else '15 % (por defecto)'}"
+    )
+    console.print(
+        "  auto-copy  Copia automática al portapapeles: "
+        f"{'activada' if settings.auto_copy else 'desactivada'}"
+    )
+    threshold = resolve_low_quota_threshold(Path.cwd(), low)
+    if threshold.source == "proyecto":
+        console.print(
+            f"[dim]En esta carpeta manda el proyecto: {threshold.percent} % "
+            f"({threshold.project_file}).[/dim]"
+        )
+    elif threshold.error:
+        console.print(
+            f"[yellow]Umbral de {threshold.project_file} ignorado: "
+            f"{escape(threshold.error)}.[/yellow]"
+        )
+
+
+@app.command(
+    name="config",
+    help=(
+        "Muestra o cambia los ajustes globales: 'low-quota' (umbral del aviso de cuota baja, "
+        "1-99 o 'default') y 'auto-copy' (on/off). Ejemplo: agyswitcher config low-quota 20"
+    ),
+)
+def config_command(
+    key: Annotated[str | None, typer.Argument(help="Ajuste: 'low-quota' o 'auto-copy'.")] = None,
+    value: Annotated[
+        str | None,
+        typer.Argument(help="Nuevo valor: 1-99 o 'default' (low-quota); on/off (auto-copy)."),
+    ] = None,
+) -> None:
+    """Muestra o cambia los ajustes globales de AgySwitcher."""
+    try:
+        settings = load_settings()
+    except ConfigError as err:
+        typer.secho(f"Error de configuración: {err}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from err
+
+    if key is None:
+        _show_settings(settings)
+        return
+
+    name = key.strip().lower()
+    if name not in {"low-quota", "auto-copy"}:
+        typer.secho(
+            f"Error: ajuste desconocido '{key}'. Usa 'low-quota' o 'auto-copy'.",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        raise typer.Exit(code=1)
+    if value is None:
+        _show_settings(settings)
+        return
+
+    raw = value.strip().lower()
+    if name == "low-quota":
+        if raw == "default":
+            settings.low_quota_percent = None
+        else:
+            try:
+                number = int(raw)
+            except ValueError:
+                number = 0
+            if not LOW_QUOTA_MIN <= number <= LOW_QUOTA_MAX:
+                typer.secho(
+                    f"Error: el umbral debe ser un número de {LOW_QUOTA_MIN} a {LOW_QUOTA_MAX} "
+                    "o 'default'.",
+                    fg=typer.colors.RED,
+                    err=True,
+                )
+                raise typer.Exit(code=1)
+            settings.low_quota_percent = number
+    else:
+        if raw in _ON_VALUES:
+            settings.auto_copy = True
+        elif raw in _OFF_VALUES:
+            settings.auto_copy = False
+        else:
+            typer.secho("Error: usa 'on' u 'off'.", fg=typer.colors.RED, err=True)
+            raise typer.Exit(code=1)
+
+    try:
+        save_settings(settings)
+    except (ConfigError, OSError) as err:
+        typer.secho(f"Error al guardar la configuración: {err}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from err
+    typer.secho("Ajuste guardado.", fg=typer.colors.GREEN)
+    _show_settings(settings)
 
 
 def _format_timestamp(ts_str: str) -> str:

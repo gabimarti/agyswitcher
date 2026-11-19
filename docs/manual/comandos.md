@@ -19,6 +19,7 @@ Todas las órdenes muestran su ayuda con `--help` (por ejemplo, `agyswitcher add
 | [`models`](#models) | Modelos disponibles y preferidos |
 | [`init`](#init) | Preparar un proyecto para continuar entre cuentas y agentes |
 | [`handoff`](#handoff) | Instrucciones para guardar y retomar el trabajo |
+| [`config`](#config) | Ajustes: umbral de cuota baja y copia al portapapeles |
 
 ---
 
@@ -65,7 +66,8 @@ fecha de reinicio. La cuenta activa aparece primero; el resto, por el reinicio m
 | `--cached`, `-c` | Solo datos guardados, sin consultar a `agy`. |
 | `--refresh-all`, `-a` | Obsoleto: equivale a `--live`. |
 
-Al final avisa si la cuota del pool activo es baja (15 % o menos) o si la sesión de `agy`
+Al final avisa si la cuota del pool activo es baja (15 % o menos por defecto; ver
+[`config`](#config)) o si la sesión de `agy`
 no coincide con la cuenta activa.
 
 ## status
@@ -223,4 +225,28 @@ agente.
 agyswitcher handoff save     # guardar el estado antes de cambiar de cuenta
 agyswitcher handoff resume   # retomar después del cambio
 agyswitcher handoff          # ambas
+agyswitcher handoff save -c  # además, copiarla al portapapeles
 ```
+
+| Opción | Descripción |
+| :--- | :--- |
+| `--copy`, `-c` | Copia la instrucción al portapapeles (con `save` o `resume`). |
+
+## config
+
+Muestra o cambia los ajustes globales (se guardan en `config.json`).
+
+```powershell
+agyswitcher config                     # ver los ajustes
+agyswitcher config low-quota 20        # avisar con un 20 % o menos
+agyswitcher config low-quota default   # volver al valor por defecto (15 %)
+agyswitcher config auto-copy off       # no copiar instrucciones automáticamente
+```
+
+| Ajuste | Valores | Para qué |
+| :--- | :--- | :--- |
+| `low-quota` | 1-99 o `default` | Umbral del aviso de cuota baja (por defecto 15 %). |
+| `auto-copy` | `on` / `off` | Copiar automáticamente al portapapeles la instrucción de guardar al avisar de cuota baja y la de retomar tras un cambio de cuenta (por defecto `on`). |
+
+Un proyecto puede tener su propio umbral en `.agyswitcher.toml`, que tiene prioridad sobre
+el global (ver [Continuidad](continuidad.md#aviso-de-cuota-baja)).

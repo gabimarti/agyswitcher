@@ -19,6 +19,7 @@ from agyswitcher.project import (
     load_handoff_prompts,
     low_quota_percent,
     parse_agents,
+    resolve_low_quota_threshold,
     scaffold_project,
 )
 
@@ -195,3 +196,48 @@ def test_merge_refuses_non_utf8(tmp_path: Path) -> None:
     (tmp_path / "AGENTS.md").write_bytes("# Reglas año\n".encode("cp1252"))
     with pytest.raises(ProjectError, match="UTF-8"):
         scaffold_project(tmp_path, (), merge=True)
+
+
+def test_low_quota_threshold_default_global_and_project(tmp_path: Path) -> None:
+    """Prioridad: proyecto > global > por defecto (15)."""
+    sub = tmp_path / "src"
+    sub.mkdir()
+    default = resolve_low_quota_threshold(sub, None)
+    assert (default.percent, default.source) == (15, "por defecto")
+    assert resolve_low_quota_threshold(sub, 30).percent == 30
+
+    (tmp_path / ".agyswitcher.toml").write_text("[quota]\nlow_percent = 8\n", encoding="utf-8")
+    project = resolve_low_quota_threshold(sub, 30)
+    assert (project.percent, project.source) == (8, "proyecto")
+    assert project.project_file == tmp_path / ".agyswitcher.toml"
+
+
+def test_low_quota_threshold_project_without_quota_uses_global(tmp_path: Path) -> None:
+    (tmp_path / ".agyswitcher.toml").write_text("[handoff]\n", encoding="utf-8")
+    threshold = resolve_low_quota_threshold(tmp_path, 20)
+    assert (threshold.percent, threshold.source, threshold.error) == (20, "global", None)
+
+
+def test_low_quota_threshold_invalid_project_value_is_reported(tmp_path: Path) -> None:
+    (tmp_path / ".agyswitcher.toml").write_text("[quota]\nlow_percent = 0\n", encoding="utf-8")
+    threshold = resolve_low_quota_threshold(tmp_path, None)
+    assert threshold.percent == 15
+    assert threshold.error is not None and "low_percent" in threshold.error
+
+
+def test_low_quota_threshold_unreadable_project_file(tmp_path: Path) -> None:
+    (tmp_path / ".agyswitcher.toml").write_text("[quota\n", encoding="utf-8")
+    threshold = resolve_low_quota_threshold(tmp_path, 40)
+    assert threshold.percent == 40
+    assert threshold.error
+
+
+def test_project_toml_template_documents_quota(tmp_path: Path) -> None:
+    import tomllib
+
+    from agyswitcher.project import _project_toml
+
+    text = _project_toml()
+    assert "# [quota]" in text
+    assert "# low_percent = 15" in text
+    assert "quota" not in tomllib.loads(text)  # comentado: no cambia nada por defecto

@@ -130,8 +130,15 @@ proyecto**, no en `agy`:
 - `agyswitcher handoff [save|resume]` muestra las instrucciones de traspaso, leídas de
   `.agyswitcher.toml` (búsqueda hacia arriba desde la carpeta actual; `tomllib`) o las de
   por defecto si no existe o está mal formado.
-- `LOW_QUOTA_PERCENT` (15 %): `list`, `status` y `run` avisan para guardar el estado a
-  tiempo y proponen la siguiente cuenta.
+- Aviso de cuota baja: `list`, `status` y `run` avisan para guardar el estado a tiempo y
+  proponen la siguiente cuenta. Umbral (`project.resolve_low_quota_threshold`): `[quota]
+  low_percent` del `.agyswitcher.toml` del proyecto > `settings.low_quota_percent` de
+  `config.json` (`agyswitcher config low-quota`) > 15 % (`config.LOW_QUOTA_DEFAULT`).
+- Portapapeles (`clipboard.py`): API de Windows con `ctypes` (`CF_UNICODETEXT`), sin
+  dependencias ni procesos auxiliares; nunca lanza excepciones. Copia `handoff --copy` y,
+  si `settings.auto_copy` (por defecto), la instrucción de guardar al avisar de cuota baja y
+  la de retomar tras un cambio verificado. Los tests sustituyen la escritura real
+  (`conftest.py`).
 
 ### 3.5 Atribución de cuota
 
@@ -153,21 +160,23 @@ con cuentas ficticias). Los tests la eliminan del entorno para no salir del HOME
 
 ```jsonc
 {
-  "version": 1,
-  "live_dir": "C:\\Users\\<User>\\.gemini",
-  "switch_policy": {
-    "mode": "guided",                        // cambio de cuenta siempre guiado
-    "candidate_strategy": "balanced",        // "balanced" | "round-robin" | "manual"
-    "quota_reset_hours": 24,
-    "short_usage_threshold_percent": 10,
-    "refresh_failure_threshold": 2
+  "accounts": {
+    "trabajo": {
+      "alias": "trabajo",
+      "added_at": "2026-11-18T10:00:00+00:00",
+      "email": "trabajo@example.com",
+      "preferred_models": {"gemini": "<modelo>"}  // opcional (agyswitcher models)
+    }
   },
-  "log_watch": {
-    "log_dir": "C:\\Users\\<User>\\.gemini\\antigravity-cli\\log",
-    "primary_log": "C:\\Users\\<User>\\.gemini\\antigravity-cli\\cli.log"
+  "settings": {                              // agyswitcher config
+    "low_quota_percent": 20,                 // opcional; sin él, 15
+    "auto_copy": true
   }
 }
 ```
+
+`save_accounts` y `save_settings` reescriben el fichero de forma atómica conservando la otra
+sección. Los ajustes inválidos se ignoran (se usan los de por defecto).
 
 ### `state.json` — Estado de ejecución
 

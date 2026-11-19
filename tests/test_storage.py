@@ -9,7 +9,15 @@ from pathlib import Path
 
 import pytest
 
-from agyswitcher.config import ConfigError, load_accounts, save_accounts
+from agyswitcher.config import (
+    ConfigError,
+    Settings,
+    is_valid_low_quota,
+    load_accounts,
+    load_settings,
+    save_accounts,
+    save_settings,
+)
 from agyswitcher.models import Account, AccountQuotaInfo, AppState
 from agyswitcher.state import StateError, load_state, save_state
 
@@ -380,3 +388,48 @@ def test_switch_history_is_capped_when_loading(tmp_path: Path) -> None:
     state = load_state(state_path=path)
 
     assert state.switch_history == entries[-MAX_SWITCH_HISTORY:]
+
+
+def test_settings_defaults_when_missing(config_file: Path) -> None:
+    settings = load_settings(config_file)
+    assert settings.low_quota_percent is None
+    assert settings.auto_copy is True
+
+
+def test_settings_roundtrip_keeps_accounts(config_file: Path) -> None:
+    """Guardar ajustes conserva las cuentas, y guardar cuentas conserva los ajustes."""
+    save_accounts({"a": Account(alias="a", email="a@example.com")}, config_file)
+    save_settings(Settings(low_quota_percent=25, auto_copy=False), config_file)
+    assert "a" in load_accounts(config_file)
+
+    save_accounts({"b": Account(alias="b")}, config_file)
+    settings = load_settings(config_file)
+    assert settings.low_quota_percent == 25
+    assert settings.auto_copy is False
+    assert set(load_accounts(config_file)) == {"b"}
+
+
+def test_settings_invalid_values_are_ignored(config_file: Path) -> None:
+    config_file.write_text(
+        json.dumps({"accounts": {}, "settings": {"low_quota_percent": 150, "auto_copy": "x"}}),
+        encoding="utf-8",
+    )
+    settings = load_settings(config_file)
+    assert settings.low_quota_percent is None
+    assert settings.auto_copy is True
+    assert Settings.from_dict("no es un objeto") == Settings()
+
+
+def test_is_valid_low_quota() -> None:
+    assert is_valid_low_quota(1)
+    assert is_valid_low_quota(99)
+    assert not is_valid_low_quota(0)
+    assert not is_valid_low_quota(100)
+    assert not is_valid_low_quota(True)
+    assert not is_valid_low_quota("20")
+
+
+def test_load_accounts_rejects_non_object_json(config_file: Path) -> None:
+    config_file.write_text("[1, 2]", encoding="utf-8")
+    with pytest.raises(ConfigError):
+        load_accounts(config_file)

@@ -56,8 +56,19 @@ varios equipos). Nunca guardes en `dev_mem/` contraseñas, tokens ni datos perso
 ## Aviso de cuota baja
 
 `list`, `status` y `run` avisan cuando al **pool activo de la cuenta activa** le queda un
-**15 % o menos**. Es el momento de ejecutar `handoff save`: si esperas a que se agote, el
-agente ya no podrá guardar el estado. El aviso indica también la siguiente cuenta con cuota.
+**15 % o menos**. Es el momento de guardar el estado: si esperas a que se agote, el agente
+ya no podrá hacerlo. El aviso deja en el portapapeles la instrucción de `handoff save`, lista
+para pegar en `agy`, e indica la siguiente cuenta con cuota. Del mismo modo, tras un cambio
+de cuenta verificado queda copiada la instrucción para retomar. La copia automática se
+desactiva con `agyswitcher config auto-copy off`.
+
+El umbral se cambia para todos los proyectos con `agyswitcher config low-quota 20`, o solo
+para uno en su `.agyswitcher.toml`, que tiene prioridad:
+
+```toml
+[quota]
+low_percent = 10
+```
 
 ## Personalizar las instrucciones (`.agyswitcher.toml`)
 

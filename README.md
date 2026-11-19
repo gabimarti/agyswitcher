@@ -7,7 +7,8 @@ de Google en Antigravity CLI (`agy`)** y a **seguir con el mismo proyecto** cuan
 agota su cuota.
 
 - Muestra la cuota y la fecha de reinicio de cada cuenta, y cuál es la siguiente disponible.
-- Avisa cuando la cuota baja del 15 %, para que guardes el estado a tiempo.
+- Avisa cuando la cuota baja del 15 % (configurable) y te deja en el portapapeles la
+  instrucción para que el agente guarde el estado a tiempo.
 - Te guía al cambiar de cuenta y **comprueba** que has iniciado sesión con la correcta.
 - Prepara tus proyectos (`AGENTS.md`, `dev_mem/`) para que la siguiente sesión, con otra
   cuenta o con otro agente de IA (Gemini, Claude, ChatGPT/Codex, Copilot, Cursor), sepa

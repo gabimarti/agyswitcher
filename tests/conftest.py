@@ -25,4 +25,6 @@ def _isolate_home(
     monkeypatch.setattr(Path, "home", classmethod(lambda cls: fake_home))
     # Una AGYSWITCHER_HOME del entorno real desviaría los datos fuera del HOME aislado.
     monkeypatch.delenv("AGYSWITCHER_HOME", raising=False)
+    # Ningún test debe escribir en el portapapeles real del usuario.
+    monkeypatch.setattr("agyswitcher.clipboard._win32_set_text", lambda _text: False)
     return fake_home

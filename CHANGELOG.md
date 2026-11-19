@@ -12,6 +12,13 @@ Todos los cambios relevantes de AgySwitcher se documentan en este fichero.
   la de reinicio más próximo.
 - `rotate` consulta la cuota de la nueva cuenta al terminar el cambio, como `set-active`, e
   indica si la cuota que figuraba agotada vuelve a estar disponible o sigue agotada.
+- Comando `agyswitcher config` para ver y cambiar los ajustes globales: umbral del aviso de
+  cuota baja (`low-quota`, por defecto 15 %) y copia automática al portapapeles
+  (`auto-copy`). Un proyecto puede fijar su propio umbral en `.agyswitcher.toml`
+  (`[quota] low_percent`), que tiene prioridad.
+- `agyswitcher handoff save|resume --copy` copia la instrucción al portapapeles.
+- El aviso de cuota baja deja en el portapapeles la instrucción para guardar el estado, y el
+  cambio de cuenta verificado, la de retomar (se desactiva con `config auto-copy off`).
 
 ### Cambiado
 

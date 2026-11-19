@@ -1952,3 +1952,148 @@ def test_status_live_error_escapes_agy_output() -> None:
 
     assert result.exit_code == 0, result.output
     assert "salida [/bold cyan] rara" in result.output
+
+
+# ---------------------------------------------------------------------------
+# Umbral de cuota baja configurable y portapapeles
+# ---------------------------------------------------------------------------
+
+
+def _clipboard_recorder(monkeypatch: pytest.MonkeyPatch, ok: bool = True) -> list[str]:
+    copied: list[str] = []
+
+    def _copy(text: str) -> bool:
+        copied.append(text)
+        return ok
+
+    monkeypatch.setattr("agyswitcher.cli.copy_to_clipboard", _copy)
+    return copied
+
+
+def test_config_shows_defaults() -> None:
+    result = runner.invoke(app, ["config"])
+    assert result.exit_code == 0
+    assert "15 % (por defecto)" in result.output
+    assert "activada" in result.output
+
+
+def test_config_sets_and_resets_low_quota() -> None:
+    result = runner.invoke(app, ["config", "low-quota", "25"])
+    assert result.exit_code == 0
+    assert "Umbral de cuota baja: 25 %" in result.output
+
+    result = runner.invoke(app, ["config", "low-quota", "default"])
+    assert result.exit_code == 0
+    assert "15 % (por defecto)" in result.output
+
+
+@pytest.mark.parametrize("value", ["0", "100", "veinte"])
+def test_config_rejects_invalid_low_quota(value: str) -> None:
+    result = runner.invoke(app, ["config", "low-quota", value])
+    assert result.exit_code == 1
+    assert "de 1 a 99" in result.output
+
+
+def test_config_rejects_unknown_key_and_bad_switch() -> None:
+    assert runner.invoke(app, ["config", "color", "rojo"]).exit_code == 1
+    assert runner.invoke(app, ["config", "auto-copy", "quizas"]).exit_code == 1
+
+
+def test_config_keeps_accounts() -> None:
+    runner.invoke(app, ["add", "cuenta-1", "--email", "uno@example.com"])
+    runner.invoke(app, ["config", "auto-copy", "off"])
+    assert "cuenta-1" in load_accounts()
+    assert "desactivada" in runner.invoke(app, ["config"]).output
+
+
+def test_low_quota_uses_global_threshold(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.chdir(tmp_path)
+    runner.invoke(app, ["add", "cuenta-1", "--email", "uno@example.com"])
+    _set_quota("cuenta-1", 25)
+    assert "Cuota baja" not in runner.invoke(app, ["list", "--cached"]).output
+
+    runner.invoke(app, ["config", "low-quota", "30"])
+    flat = " ".join(runner.invoke(app, ["list", "--cached"]).output.split())
+    assert "Cuota baja en 'cuenta-1' (Gemini: 25 % restante, umbral 30 %)" in flat
+
+
+def test_low_quota_project_threshold_overrides_global(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".agyswitcher.toml").write_text("[quota]\nlow_percent = 5\n", encoding="utf-8")
+    runner.invoke(app, ["add", "cuenta-1", "--email", "uno@example.com"])
+    runner.invoke(app, ["config", "low-quota", "30"])
+    _set_quota("cuenta-1", 25)
+    assert "Cuota baja" not in runner.invoke(app, ["list", "--cached"]).output
+    assert "manda el proyecto: 5 %" in " ".join(runner.invoke(app, ["config"]).output.split())
+
+
+def test_low_quota_warning_copies_save_prompt(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    copied = _clipboard_recorder(monkeypatch)
+    runner.invoke(app, ["add", "cuenta-1", "--email", "uno@example.com"])
+    _set_quota("cuenta-1", 10)
+
+    flat = " ".join(runner.invoke(app, ["list", "--cached"]).output.split())
+    assert "está en el portapapeles" in flat
+    from agyswitcher.project import DEFAULT_SAVE_PROMPT
+
+    assert copied == [DEFAULT_SAVE_PROMPT]
+
+
+def test_low_quota_warning_without_auto_copy(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    copied = _clipboard_recorder(monkeypatch)
+    runner.invoke(app, ["add", "cuenta-1", "--email", "uno@example.com"])
+    runner.invoke(app, ["config", "auto-copy", "off"])
+    _set_quota("cuenta-1", 10)
+
+    flat = " ".join(runner.invoke(app, ["list", "--cached"]).output.split())
+    assert "Ejecuta agyswitcher handoff save" in flat
+    assert copied == []
+
+
+def test_handoff_copy(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.chdir(tmp_path)
+    copied = _clipboard_recorder(monkeypatch)
+    result = runner.invoke(app, ["handoff", "resume", "--copy"])
+    assert result.exit_code == 0
+    assert "copiada al portapapeles" in result.output
+    from agyswitcher.project import DEFAULT_RESUME_PROMPT
+
+    assert copied == [DEFAULT_RESUME_PROMPT]
+
+
+def test_handoff_copy_requires_save_or_resume(monkeypatch: pytest.MonkeyPatch) -> None:
+    copied = _clipboard_recorder(monkeypatch)
+    result = runner.invoke(app, ["handoff", "--copy"])
+    assert result.exit_code == 1
+    assert copied == []
+
+
+def test_handoff_copy_failure_is_reported(monkeypatch: pytest.MonkeyPatch) -> None:
+    _clipboard_recorder(monkeypatch, ok=False)
+    result = runner.invoke(app, ["handoff", "save", "-c"])
+    assert result.exit_code == 0
+    assert "No se pudo copiar al portapapeles" in result.output
+
+
+def test_verified_switch_copies_resume_prompt(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    copied = _clipboard_recorder(monkeypatch)
+    _two_accounts()
+    _login_ok(monkeypatch)
+
+    result = runner.invoke(app, ["set-active", "cuenta-2"])
+    assert result.exit_code == 0
+    assert "Instrucción copiada al portapapeles" in result.output
+    from agyswitcher.project import DEFAULT_RESUME_PROMPT
+
+    assert copied == [DEFAULT_RESUME_PROMPT]

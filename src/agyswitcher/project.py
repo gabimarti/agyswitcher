@@ -6,7 +6,7 @@ Módulo: project.py
 Autor: Gabriel Marti
 Website & Contact: https://gabimarti.github.io/
 Fecha inicio: 2026-11-18
-Ultimo cambio: 2026-11-18
+Ultimo cambio: 2026-11-19
 
 Descripción: Continuidad de un proyecto entre cuentas y entre agentes de IA.
 
@@ -26,13 +26,14 @@ import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from agyswitcher.config import LOW_QUOTA_DEFAULT, is_valid_low_quota
 from agyswitcher.models import AccountQuotaInfo
 
 PROJECT_CONFIG_NAME = ".agyswitcher.toml"
 """Fichero de configuración de AgySwitcher dentro de un proyecto."""
 
-LOW_QUOTA_PERCENT = 15
-"""Porcentaje restante a partir del cual se avisa para guardar el estado a tiempo."""
+LOW_QUOTA_PERCENT = LOW_QUOTA_DEFAULT
+"""Porcentaje restante por defecto a partir del cual se avisa para guardar el estado a tiempo."""
 
 DEFAULT_SAVE_PROMPT = (
     "Vamos a cambiar de cuenta. Guarda ahora el estado del proyecto siguiendo AGENTS.md: "
@@ -221,7 +222,12 @@ def _project_toml() -> str:
         "# entre cuentas o agentes. Puedes adaptarlas a tu forma de trabajar.\n\n"
         "[handoff]\n"
         f"save_prompt = {_toml_string(DEFAULT_SAVE_PROMPT)}\n\n"
-        f"resume_prompt = {_toml_string(DEFAULT_RESUME_PROMPT)}\n"
+        f"resume_prompt = {_toml_string(DEFAULT_RESUME_PROMPT)}\n\n"
+        "# Aviso de cuota baja: porcentaje restante (1-99) a partir del cual se avisa para\n"
+        "# guardar el estado. Sin indicarlo se usa el valor global\n"
+        "# ('agyswitcher config low-quota'), por defecto 15.\n"
+        "# [quota]\n"
+        "# low_percent = 15\n"
     )
 
 
@@ -411,6 +417,44 @@ def load_handoff_prompts(start: Path) -> HandoffPrompts:
 # ---------------------------------------------------------------------------
 # Cuota baja
 # ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class LowQuotaThreshold:
+    """Umbral del aviso de cuota baja y de dónde sale."""
+
+    percent: int
+    source: str
+    """'proyecto', 'global' o 'por defecto'."""
+    project_file: Path | None = None
+    error: str | None = None
+    """Motivo por el que se ignoró el valor del proyecto (fichero ilegible o valor inválido)."""
+
+
+def resolve_low_quota_threshold(start: Path, global_percent: int | None) -> LowQuotaThreshold:
+    """Umbral de cuota baja: el del proyecto ('[quota] low_percent'), el global o el de por defecto.
+
+    Un '.agyswitcher.toml' ilegible o con un valor fuera de 1-99 no es fatal: se ignora y se
+    indica el motivo en 'error'.
+    """
+    config = find_project_config(start)
+    error: str | None = None
+    if config is not None:
+        try:
+            with config.open("rb") as handle:
+                data = tomllib.load(handle)
+        except (OSError, tomllib.TOMLDecodeError) as err:
+            data = {}
+            error = str(err)
+        section = data.get("quota")
+        value = section.get("low_percent") if isinstance(section, dict) else None
+        if isinstance(value, int) and is_valid_low_quota(value):
+            return LowQuotaThreshold(value, "proyecto", config)
+        if value is not None:
+            error = f"[quota] low_percent debe ser un entero de 1 a 99 (es {value!r})"
+    if global_percent is not None and is_valid_low_quota(global_percent):
+        return LowQuotaThreshold(global_percent, "global", config, error)
+    return LowQuotaThreshold(LOW_QUOTA_DEFAULT, "por defecto", config, error)
 
 
 def low_quota_percent(
