@@ -2,7 +2,10 @@
 
 Todos los cambios relevantes de AgySwitcher se documentan en este fichero.
 
-## [Sin publicar]
+## [1.2.0] - 2026-11-19
+
+Umbral de cuota baja configurable con las instrucciones listas en el portapapeles, avisos
+más útiles cuando todas las cuentas figuran agotadas, logotipo y revisión de seguridad.
 
 ### Añadido
 
@@ -17,17 +20,16 @@ Todos los cambios relevantes de AgySwitcher se documentan en este fichero.
   (`auto-copy`). Un proyecto puede fijar su propio umbral en `.agyswitcher.toml`
   (`[quota] low_percent`), que tiene prioridad.
 - `agyswitcher handoff save|resume --copy` copia la instrucción al portapapeles.
-- Logotipo de AgySwitcher en el README y la web (con variante para modo oscuro), favicon de
-  la web e icono en el ejecutable y el instalador, que muestra también el lema.
 - El aviso de cuota baja deja en el portapapeles la instrucción para guardar el estado, y el
   cambio de cuenta verificado, la de retomar (se desactiva con `config auto-copy off`).
+- Logotipo de AgySwitcher en el README y la web (con variante para modo oscuro), favicon de
+  la web e icono en el ejecutable y el instalador, que muestra también el lema.
 
 ### Cambiado
 
 - Una cuenta agotada vuelve a tenerse en cuenta al elegir la siguiente cuenta cuando pasa su
   reinicio previsto (se avisa de que está sin confirmar). Antes seguía descartada hasta
   consultar su cuota en vivo.
-
 - Los alias nuevos deben empezar y terminar por letra o número (ya no se aceptan `-`, `_` ni
   alias que empiecen por guion, que se confundían con opciones). Las cuentas existentes no
   se ven afectadas.
