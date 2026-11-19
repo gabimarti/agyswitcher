@@ -1,4 +1,9 @@
-# AgySwitcher
+<h1>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/logo/agyswitcher-logo-dark.png">
+    <img src="docs/assets/logo/agyswitcher-logo.png" alt="AgySwitcher" width="480">
+  </picture>
+</h1>
 
 *Switch accounts. Keep coding.*
 

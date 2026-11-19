@@ -405,6 +405,7 @@ agyswitcher/src/agyswitcher/
 ├── _build.py              # Número de compilación (None en el código fuente)
 ├── project.py              # init (AGENTS.md, dev_mem/), handoff y umbral de cuota baja
 ├── ai_models.py            # Modelos disponibles y preferencias por pool
+├── clipboard.py            # Copia al portapapeles de Windows (ctypes)
 └── dashboard.py            # Panel TUI
 ```
 
@@ -413,6 +414,10 @@ agyswitcher/src/agyswitcher/
 ## 10. Empaquetado y distribución
 
 - `packaging/entry.py`: punto de entrada del ejecutable.
+- `packaging/agyswitcher.ico` (icono del ejecutable y del instalador) y `packaging/wizard-*.bmp`
+  (imágenes del asistente de instalación); el logotipo y el favicon de la web están en
+  `docs/assets/logo/`. Se generan a partir del logotipo original, que no está en el
+  repositorio.
 - `packaging/make_version_info.py`: recurso de versión de Windows (`MAJOR.MINOR.PATCH.BUILD`,
   descripción, copyright y licencia) a partir de `version.py`.
 - `packaging/build.ps1`: escribe el número de compilación en `_build.py` (y lo restaura

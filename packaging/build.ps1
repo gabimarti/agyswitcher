@@ -66,6 +66,7 @@ try {
         "--collect-submodules", "rich",
         "--python-option", "X utf8",
         "--version-file", $VersionInfo,
+        "--icon", (Join-Path $PSScriptRoot "agyswitcher.ico"),
         "--distpath", $Dist, "--workpath", (Join-Path $Work "pyinstaller"), "--specpath", $Work
     )
 }

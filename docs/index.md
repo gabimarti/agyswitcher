@@ -1,9 +1,11 @@
 ---
+title: AgySwitcher
 hide:
   - navigation
 ---
 
-# AgySwitcher
+![AgySwitcher](assets/logo/agyswitcher-logo.png#only-light){ width="480" }
+![AgySwitcher](assets/logo/agyswitcher-logo-dark.png#only-dark){ width="480" }
 
 *Switch accounts. Keep coding.*
 

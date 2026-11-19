@@ -18,6 +18,7 @@ AppVerName=AgySwitcher {#AppVersion}
 AppPublisher=Gabriel Marti
 AppPublisherURL=https://gabimarti.github.io/
 AppSupportURL=https://github.com/gabimarti/agyswitcher
+AppComments=Switch accounts. Keep coding.
 VersionInfoVersion={#FileVersion}
 VersionInfoProductName=AgySwitcher
 VersionInfoDescription=Instalador de AgySwitcher
@@ -34,6 +35,9 @@ OutputBaseFilename=AgySwitcher-{#AppVersion}-setup
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
+SetupIconFile={#RepoRoot}\packaging\agyswitcher.ico
+WizardImageFile={#RepoRoot}\packaging\wizard-164.bmp,{#RepoRoot}\packaging\wizard-328.bmp
+WizardSmallImageFile={#RepoRoot}\packaging\wizard-small-55.bmp,{#RepoRoot}\packaging\wizard-small-110.bmp
 UninstallDisplayName=AgySwitcher
 UninstallDisplayIcon={app}\agyswitcher.exe
 
@@ -41,7 +45,7 @@ UninstallDisplayIcon={app}\agyswitcher.exe
 Name: "spanish"; MessagesFile: "compiler:Languages\Spanish.isl"
 
 [Messages]
-spanish.FinishedLabel=AgySwitcher se ha instalado en el equipo.%n%nAbre una consola NUEVA (PowerShell o Windows Terminal) y ejecuta:%n%n    agyswitcher --help%n%nEl manual está en la carpeta docs de la instalación.
+spanish.FinishedLabel=Switch accounts. Keep coding.%n%nAgySwitcher se ha instalado en el equipo.%n%nAbre una consola NUEVA (PowerShell o Windows Terminal) y ejecuta:%n%n    agyswitcher --help%n%nEl manual está en la carpeta docs de la instalación.
 
 [Files]
 ; SourceDir ya incluye README.md, LICENSE, CHANGELOG.md y docs\ (los copia build.ps1).

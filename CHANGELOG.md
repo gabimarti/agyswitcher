@@ -17,6 +17,8 @@ Todos los cambios relevantes de AgySwitcher se documentan en este fichero.
   (`auto-copy`). Un proyecto puede fijar su propio umbral en `.agyswitcher.toml`
   (`[quota] low_percent`), que tiene prioridad.
 - `agyswitcher handoff save|resume --copy` copia la instrucción al portapapeles.
+- Logotipo de AgySwitcher en el README y la web (con variante para modo oscuro), favicon de
+  la web e icono en el ejecutable y el instalador, que muestra también el lema.
 - El aviso de cuota baja deja en el portapapeles la instrucción para guardar el estado, y el
   cambio de cuenta verificado, la de retomar (se desactiva con `config auto-copy off`).
 
