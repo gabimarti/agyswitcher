@@ -21,6 +21,14 @@ agota su cuota.
 - **Seguridad primero:** no lee, copia ni guarda contraseñas ni tokens, nunca inicia sesión
   por ti y no envía nada fuera de tu equipo.
 
+**¿Para quién?** Estudiantes, personas que empiezan a programar y programadores
+independientes que quieren usar un agente de IA sin pagar una suscripción, o probarlo antes de
+decidirse. La cuota gratuita de Antigravity es limitada; con varias cuentas propias puedes
+seguir trabajando sin perder el contexto. Y como el contexto vive en el proyecto, puedes
+**combinar `agy` con otros agentes y proveedores** (Claude Code, Codex…) sobre el mismo
+código. Guías: [Uso en el día a día](docs/manual/dia-a-dia.md) ·
+[Varios agentes y proveedores](docs/manual/multiagente.md).
+
 ## Cómo funciona
 
 `agy` guarda una única sesión de Google en el Administrador de credenciales de Windows, y su
@@ -67,7 +75,8 @@ agyswitcher set-active trabajo   # cambio de cuenta guiado y verificado
 Web con el manual completo: **[gabimarti.github.io/agyswitcher](https://gabimarti.github.io/agyswitcher/)**
 
 - [Manual de usuario](docs/manual/index.md)
-  - [Instalación](docs/manual/instalacion.md) · [Conceptos](docs/manual/conceptos.md) ·
+  - [Instalación](docs/manual/instalacion.md) · [Uso en el día a día](docs/manual/dia-a-dia.md) ·
+    [Conceptos](docs/manual/conceptos.md) · [Varios agentes](docs/manual/multiagente.md) ·
     [Comandos](docs/manual/comandos.md) · [Continuidad del proyecto](docs/manual/continuidad.md) ·
     [Problemas frecuentes](docs/manual/problemas.md) · [Desinstalación](docs/manual/desinstalacion.md)
 - Tutoriales: [proyecto nuevo](docs/tutoriales/proyecto-nuevo.md) ·

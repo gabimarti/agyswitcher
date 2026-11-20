@@ -17,6 +17,16 @@ proyecto cuando una cuenta se queda sin cuota.**
 
 ---
 
+## ¿Para quién es?
+
+Para quien quiere **programar con un agente de IA sin pagar una suscripción**, o probarlo a
+fondo antes de decidirse: estudiantes, personas que empiezan a programar y programadores
+independientes. Antigravity CLI se puede usar gratis con una cuenta de Google, pero su cuota
+gratuita es limitada y se reinicia cada semana. Con varias cuentas propias puedes seguir
+trabajando… y AgySwitcher hace que cambiar de una a otra no te cueste el hilo del proyecto.
+
+[Así se usa en el día a día](manual/dia-a-dia.md){ .md-button }
+
 ## El problema
 
 Cuando la cuota semanal de tu cuenta se agota en mitad de una tarea, cambiar a otra cuenta
@@ -49,10 +59,11 @@ reinicia cada una se vuelve un trabajo en sí mismo.
     `agyswitcher init` prepara tu proyecto con `AGENTS.md` y una memoria en `dev_mem/`
     que la siguiente sesión, con otra cuenta o con otro agente, lee para continuar.
 
-- **Para cualquier agente**
+- **Multiagente y multiproveedor**
 
-    Funciona con Antigravity/Gemini, Claude, ChatGPT/Codex, GitHub Copilot y Cursor: todos
-    leen las mismas reglas desde `AGENTS.md`.
+    Combina `agy` con Claude Code, Codex de ChatGPT, GitHub Copilot o Cursor: todos leen las
+    mismas reglas desde `AGENTS.md` y la misma memoria en `dev_mem/`.
+    [Cómo funciona](manual/multiagente.md).
 
 - **Seguro por diseño**
 

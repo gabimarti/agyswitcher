@@ -65,9 +65,11 @@ nav:
   - Manual:
       - manual/index.md
       - Instalación: manual/instalacion.md
+      - Uso en el día a día: manual/dia-a-dia.md
       - Conceptos: manual/conceptos.md
       - Comandos: manual/comandos.md
       - Continuidad del proyecto: manual/continuidad.md
+      - Varios agentes y proveedores: manual/multiagente.md
       - Problemas frecuentes: manual/problemas.md
       - Desinstalación: manual/desinstalacion.md
   - Tutoriales:

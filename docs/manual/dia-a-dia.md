@@ -1,0 +1,212 @@
+# AgySwitcher en el día a día
+
+Esta guía explica, con ejemplos, cómo encaja AgySwitcher en tu forma de trabajar: qué haces
+al empezar, mientras programas, cuando la cuota se acaba y al terminar. Si es la primera vez,
+empieza por la [instalación](instalacion.md) y el [tutorial de proyecto nuevo](../tutoriales/proyecto-nuevo.md).
+
+## ¿Para quién es?
+
+AgySwitcher está pensado para quien **programa con un agente de IA sin pagar una
+suscripción**, o quiere probarlo a fondo antes de decidirse:
+
+- **Estudiantes** que hacen prácticas, TFG o proyectos personales.
+- **Personas que empiezan a programar** y se apoyan en un agente para aprender.
+- **Programadores independientes** y proyectos pequeños, donde cada gasto cuenta.
+
+Antigravity CLI (`agy`) se puede usar gratis con una cuenta de Google, pero la cuota gratuita
+es **limitada** y se reinicia cada semana. Es fácil agotarla a mitad de una tarea. Si tienes
+varias cuentas de Google, puedes seguir trabajando con otra… y ahí aparecen los problemas que
+resuelve AgySwitcher:
+
+| Sin AgySwitcher | Con AgySwitcher |
+| :--- | :--- |
+| No sabes cuánta cuota le queda a cada cuenta ni cuándo se reinicia. | `agyswitcher list` te lo muestra en una tabla. |
+| Te enteras de que se acabó cuando el agente deja de responder. | Te avisa al bajar del 15 % y te deja lista la instrucción para guardar el estado. |
+| Cambias de cuenta y no sabes si `agy` usa la que crees. | El cambio es guiado y se verifica en los registros de `agy`. |
+| La nueva sesión empieza de cero: hay que volver a explicarlo todo. | El proyecto guarda su memoria en `dev_mem/` y la nueva sesión la lee para continuar. |
+
+!!! note "Uso responsable"
+    Usa solo cuentas que sean tuyas y respeta las condiciones de servicio de Google.
+    AgySwitcher no elude ningún límite: cada cuenta gasta su propia cuota. Tampoco inicia
+    sesión por ti ni toca tus contraseñas o tokens; solo te guía y comprueba el resultado.
+
+## La idea en una frase
+
+**El contexto vive en el proyecto, no en la cuenta.** Por eso puedes cambiar de cuenta (o de
+agente) sin perder el hilo: lo que importa está en `AGENTS.md` y `dev_mem/`, dentro de tu
+carpeta.
+
+```mermaid
+flowchart LR
+    A["Empiezas el día<br/>agyswitcher list"] --> B["Trabajas con agy<br/>agyswitcher run"]
+    B --> C{"¿Cuota baja?"}
+    C -- "no" --> B
+    C -- "sí" --> D["handoff save<br/>el agente guarda el estado"]
+    D --> E["set-active otra-cuenta<br/>cambio guiado"]
+    E --> F["Pegas la instrucción<br/>para retomar"]
+    F --> B
+```
+
+## Preparación (una sola vez)
+
+Registra tus cuentas con su email y prepara cada proyecto:
+
+```powershell
+agyswitcher add uni      --email uni@example.com
+agyswitcher add personal --email personal@example.com --no-activate
+agyswitcher add extra    --email extra@example.com    --no-activate
+
+cd C:\Proyectos\MiPractica
+agyswitcher init
+```
+
+Usa alias que reconozcas de un vistazo (`uni`, `personal`, `extra`…). Después abre
+`AGENTS.md` y completa la sección **Proyecto** (o pídeselo al agente): cuanto mejor descrito
+esté el proyecto, mejor retomará el trabajo cualquier sesión nueva.
+
+Si algo no cuadra, `agyswitcher doctor` revisa la instalación y te dice cómo arreglarlo.
+
+## Un día normal
+
+### 1. Al empezar: ¿qué cuenta tiene cuota?
+
+```powershell
+agyswitcher list
+```
+
+![agyswitcher list: tabla de cuentas con cuota y aviso de cuota baja](../assets/capturas/lista.svg)
+
+La cuenta activa aparece primero; el resto, ordenadas por el reinicio más próximo. Cada
+cuenta tiene **dos cuotas independientes** (pools): *Gemini* (modelos Gemini) y *Otros*
+(modelos como Claude o GPT-OSS dentro de `agy`). Si una se agota, la otra puede seguir
+disponible en la misma cuenta.
+
+### 2. Mientras trabajas: lanza `agy` a través de AgySwitcher
+
+```powershell
+cd C:\Proyectos\MiPractica
+agyswitcher run
+```
+
+Es igual que ejecutar `agy`, pero AgySwitcher lee su salida: avisa antes de empezar si la
+cuota es baja y, si se agota durante la sesión, te dice cómo continuar al salir. Si prefieres
+abrir `agy` directamente (o desde el IDE), deja en otra ventana:
+
+```powershell
+agyswitcher watch
+```
+
+En la primera instrucción de cada sesión, pide al agente que se ponga al día:
+
+> Lee AGENTS.md y dev_mem/ESTADO.md y dime en qué punto estamos.
+
+(`agyswitcher handoff resume` te da esta instrucción completa, lista para pegar.)
+
+### 3. Aviso de cuota baja: guarda el estado **antes** de que se acabe
+
+Cuando la cuota del pool que usas baja del 15 %, AgySwitcher avisa y copia al portapapeles
+la instrucción de guardado. Pégala en `agy`:
+
+![agyswitcher handoff save: instrucción para que el agente guarde el estado](../assets/capturas/handoff-save.svg)
+
+El agente actualiza `dev_mem/ESTADO.md` (qué se ha hecho, qué falta, decisiones tomadas),
+`dev_mem/TODO.md` y el diario del día. Hazlo ahora: si esperas a que la cuota llegue a cero,
+el agente ya no podrá escribir nada.
+
+!!! tip
+    Antes de cambiar de cuenta, haz también un `git commit`. Así el estado del código y el de
+    la memoria del proyecto coinciden.
+
+### 4. Cambia de cuenta (guiado y verificado)
+
+```powershell
+agyswitcher set-active personal
+```
+
+![agyswitcher set-active: instrucciones, verificación e instrucción para retomar](../assets/capturas/cambio-guiado.svg)
+
+AgySwitcher te muestra con qué email entrar. En `agy` escribe `/logout` e inicia sesión en el
+navegador con esa cuenta. AgySwitcher lo comprueba en los registros de `agy`, consulta la
+cuota de la nueva cuenta y copia la instrucción para retomar.
+
+¿No sabes cuál elegir? `agyswitcher rotate` elige por ti: si el pool que usas está agotado
+y el otro de la misma cuenta está libre, cambia de pool (sin iniciar sesión); si no, te lleva
+a la siguiente cuenta con cuota.
+
+### 5. Retoma donde lo dejaste
+
+Abre `agy` de nuevo (las ventanas abiertas siguen con la cuenta anterior) y pega la
+instrucción para retomar. El agente lee la memoria, te resume en qué punto estáis y espera tu
+confirmación antes de seguir.
+
+### 6. Al terminar el día
+
+Aunque te quede cuota, guarda el estado:
+
+```powershell
+agyswitcher handoff save
+```
+
+Mañana, con la misma cuenta o con otra, la sesión nueva sabrá exactamente dónde seguir.
+
+## Tres casos prácticos
+
+### Ana, estudiante: una práctica en una semana
+
+Ana tiene tres cuentas de Google (`uni`, `personal` y `extra`) y una práctica de programación
+con entrega el viernes.
+
+```powershell
+cd C:\Uni\Practica3
+agyswitcher init                 # una vez
+agyswitcher list                 # 'uni' tiene un 60 %
+agyswitcher run                  # trabaja toda la tarde
+# aviso: 'uni' al 12 % -> pega la instrucción de guardado en agy
+git commit -am "Parte 1 terminada"
+agyswitcher set-active personal  # /logout + inicio de sesión con personal
+agyswitcher run                  # pega la instrucción para retomar y sigue
+```
+
+El miércoles, `agyswitcher list` le muestra que `uni` se reinicia el sábado y que `extra`
+está sin usar: ya sabe con qué cuenta acabará la práctica.
+
+### Marcos, programador independiente: un encargo pequeño
+
+Marcos hace una web para un cliente. Trabaja con `agy` y, cuando el pool *Gemini* se agota,
+`agyswitcher rotate` pasa al pool *Otros* de la misma cuenta, sin cerrar sesión. Solo cuando
+también se acaba cambia de cuenta. Como todo el contexto está en `dev_mem/`, puede dejar el
+proyecto una semana y retomarlo en minutos.
+
+### Laura, que combina agentes
+
+Laura usa `agy` gratis para el trabajo diario y, de vez en cuando, Claude Code o Codex para
+una revisión a fondo. Todos leen el mismo `AGENTS.md` y la misma memoria en `dev_mem/`.
+Lo explica la página [Varios agentes y proveedores](multiagente.md).
+
+## Buenas prácticas
+
+- **Registra siempre el email** de cada cuenta: sin él no se puede verificar el cambio.
+- **Guarda el estado pronto**: al aviso de cuota baja, al final del día y antes de cualquier
+  cambio de cuenta o de agente.
+- **Pide al agente que mantenga la memoria al día**: «cuando termines esta tarea, actualiza
+  dev_mem/ESTADO.md».
+- **Haz commits pequeños y frecuentes**: el historial de Git es otra forma de memoria.
+- **Revisa `agyswitcher list` al empezar la semana**: verás qué cuentas ya se reiniciaron.
+- **No guardes secretos en `dev_mem/`** (contraseñas, tokens, datos personales).
+- **Si algo no cuadra**, ejecuta `agyswitcher doctor`.
+
+## Chuleta
+
+| Quiero… | Comando |
+| :--- | :--- |
+| Ver la cuota de mis cuentas | `agyswitcher list` |
+| Trabajar con aviso de cuota | `agyswitcher run` |
+| Vigilar `agy` abierto desde otro sitio | `agyswitcher watch` |
+| Guardar el estado del proyecto | `agyswitcher handoff save` |
+| Cambiar a una cuenta concreta | `agyswitcher set-active <alias>` |
+| Que AgySwitcher elija la siguiente | `agyswitcher rotate` |
+| Retomar después del cambio | `agyswitcher handoff resume` |
+| Preparar un proyecto | `agyswitcher init` |
+| Comprobar que todo está bien | `agyswitcher doctor` |
+
+Todas las opciones están en la [referencia de comandos](comandos.md).

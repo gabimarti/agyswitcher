@@ -11,12 +11,16 @@ otro agente de IA, sepa dónde lo dejaste**.
 ## Contenido
 
 1. [Instalación](instalacion.md): con el instalador o desde el código fuente.
-2. [Conceptos](conceptos.md): cómo funciona y por qué. Léelo antes de empezar.
-3. [Referencia de comandos](comandos.md): todos los comandos y sus opciones.
-4. [Continuidad del proyecto](continuidad.md): `init`, `handoff`, aviso de cuota baja y
+2. [Uso en el día a día](dia-a-dia.md): para quién es, la rutina de trabajo y casos
+   prácticos. **Empieza por aquí.**
+3. [Conceptos](conceptos.md): cómo funciona y por qué.
+4. [Referencia de comandos](comandos.md): todos los comandos y sus opciones.
+5. [Continuidad del proyecto](continuidad.md): `init`, `handoff`, aviso de cuota baja y
    `.agyswitcher.toml`.
-5. [Problemas frecuentes](problemas.md): mensajes habituales y cómo resolverlos.
-6. [Desinstalación](desinstalacion.md).
+6. [Varios agentes y proveedores](multiagente.md): combinar `agy` con Claude Code, Codex,
+   Copilot o Cursor sobre el mismo proyecto.
+7. [Problemas frecuentes](problemas.md): mensajes habituales y cómo resolverlos.
+8. [Desinstalación](desinstalacion.md).
 
 ## Tutoriales
 

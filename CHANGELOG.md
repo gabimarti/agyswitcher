@@ -11,6 +11,10 @@ Todos los cambios relevantes de AgySwitcher se documentan en este fichero.
   procesos abiertos y preparación del proyecto actual) con cómo arreglar cada problema. Solo
   lee, enmascara los emails para poder compartir la salida y sale con código 1 si algo falla.
   La plantilla de errores de GitHub pide su salida.
+- Guías nuevas en el manual: «Uso en el día a día» (para quién es, rutina de trabajo, casos
+  prácticos y chuleta) y «Varios agentes y proveedores» (combinar `agy` con Claude Code,
+  Codex, Copilot o Cursor sobre el mismo `AGENTS.md` y `dev_mem/`). La portada y el README
+  explican a quién va dirigido.
 - Sección «Apoya el proyecto» en la portada de la web y en el README con un botón para invitar
   a un café en Ko-fi (en la web, enlace directo sin cargar scripts de terceros), y botón
   «Sponsor» en GitHub.
