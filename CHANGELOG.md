@@ -9,6 +9,8 @@ Todos los cambios relevantes de AgySwitcher se documentan en este fichero.
 - Web, página de arquitectura: los diagramas dibujados con caracteres de caja se veían
   desalineados; ahora son diagramas Mermaid (se adaptan al modo claro y oscuro), la estructura
   de módulos es una tabla y las listas de las vías de detección de cuota se muestran bien.
+- Página de arquitectura: se quitan la nota sobre el diseño anterior (perfiles por cuenta) y
+  la tabla de decisiones pendientes, ya resueltas.
 
 ## [1.3.0] - 2026-11-20
 

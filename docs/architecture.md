@@ -72,12 +72,6 @@ flowchart TB
 Así, al cambiar de cuenta cuando la actual agota su cuota, se conservan historial,
 conversaciones, servidores MCP y *skills*, y se puede continuar el mismo proyecto.
 
-> [!NOTE]
-> Hasta el 2026-11-18 AgySwitcher mantenía un perfil por cuenta y conmutaba `.gemini`
-> mediante NTFS Directory Junctions. Se abandonó porque no cambiaba la cuenta de Google
-> (hallazgo 2) y separaba justo lo que interesa compartir. Se eliminaron `migrate`, el
-> intercambio de junctions y la siembra de perfiles.
-
 ### 3.3 Ciclo de vida de un cambio de cuenta (cambio guiado)
 
 `rotate <alias>` / `set-active <alias>` cuando cambia la cuenta (`_guided_account_switch`
@@ -364,7 +358,7 @@ agyswitcher run -- --model "claude-sonnet" -p "Hola"
 
 ---
 
-## 9. Estructura del Paquete Python (Fase 2+)
+## 9. Estructura del paquete Python
 
 Módulos de `agyswitcher/src/agyswitcher/`:
 
@@ -423,13 +417,3 @@ Módulos de `agyswitcher/src/agyswitcher/`:
   tutoriales y documentación técnica). `ci.yml` la construye en modo estricto (enlaces rotos
   = error); `docs.yml` la publica en GitHub Pages cuando el repositorio es público. Los
   pantallazos (`docs/assets/capturas/*.svg`) se generan con cuentas ficticias.
-
----
-
-## 11. Decisiones Pendientes
-
-| Decisión | Opciones | Criterio de elección |
-| :--- | :--- | :--- |
-| **Framework CLI** | `typer` (más ergonómico) vs `argparse` (stdlib) | Preferir `typer` si se acepta la dependencia; sino `argparse`. Decidir en Fase 2. |
-| **Modo de cambio de cuenta** | Resuelto (2026-11-18): siempre guiado; requiere que el usuario inicie sesión. | — |
-| **Copia inicial de perfil en `add`** | Obsoleta: ya no hay perfiles por cuenta. | — |
