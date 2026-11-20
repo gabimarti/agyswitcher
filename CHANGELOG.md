@@ -11,6 +11,8 @@ Todos los cambios relevantes de AgySwitcher se documentan en este fichero.
   de módulos es una tabla y las listas de las vías de detección de cuota se muestran bien.
 - Página de arquitectura: se quitan la nota sobre el diseño anterior (perfiles por cuenta) y
   la tabla de decisiones pendientes, ya resueltas.
+- Hoja de ruta reescrita: qué hace AgySwitcher hoy, versiones publicadas y próximas mejoras,
+  sin la historia del diseño anterior.
 
 ## [1.3.0] - 2026-11-20
 
