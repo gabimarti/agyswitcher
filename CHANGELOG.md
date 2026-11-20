@@ -4,6 +4,11 @@ Todos los cambios relevantes de AgySwitcher se documentan en este fichero.
 
 ## [Sin publicar]
 
+### Añadido
+
+- Enlace al artículo «Programar con agentes de IA a coste cero: cuotas, contexto y
+  continuidad» en el README y en la portada de la web.
+
 ### Corregido
 
 - Web, página de arquitectura: los diagramas dibujados con caracteres de caja se veían

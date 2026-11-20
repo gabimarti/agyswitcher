@@ -125,6 +125,12 @@ Sigue el [tutorial de proyecto nuevo](tutoriales/proyecto-nuevo.md) o el de
 Windows 10 u 11 y Antigravity CLI (`agy`). Con el [instalador](manual/instalacion.md) no
 necesitas Python ni permisos de administrador.
 
+## Para saber más
+
+En el artículo [Programar con agentes de IA a coste cero: cuotas, contexto y continuidad](https://gabimarti.medium.com/programar-con-agentes-de-ia-a-coste-cero-cuotas-contexto-y-continuidad-624b245177de)
+(Medium) cuento por qué nació AgySwitcher y cómo organizo un proyecto para poder cambiar de
+cuenta o de agente sin perder el contexto.
+
 ## Apoya el proyecto
 
 AgySwitcher es y seguirá siendo **gratuito y de código abierto**. Si te resulta útil y quieres

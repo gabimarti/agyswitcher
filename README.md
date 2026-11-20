@@ -84,6 +84,9 @@ Web con el manual completo: **[gabimarti.github.io/agyswitcher](https://gabimart
 - Para desarrolladores: [arquitectura técnica](docs/architecture.md) ·
   [hoja de ruta](docs/roadmap.md) · [cómo contribuir](CONTRIBUTING.md) ·
   [seguridad](SECURITY.md)
+- Artículo (Medium): [Programar con agentes de IA a coste cero: cuotas, contexto y continuidad](https://gabimarti.medium.com/programar-con-agentes-de-ia-a-coste-cero-cuotas-contexto-y-continuidad-624b245177de),
+  sobre el origen de AgySwitcher y cómo organizar un proyecto para cambiar de cuenta o de agente
+  sin perder el contexto.
 
 ## Versiones
 
