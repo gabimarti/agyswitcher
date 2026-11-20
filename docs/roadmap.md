@@ -148,6 +148,7 @@ flowchart TD
 - [x] **Rediseño de columnas de cuota en `list`**: Fusión de `% Gemini` y `% External` en columna única `Cuota` (doble fila: Gemini / Otros) y columna `Reinicio Cuota` también con doble fila (reset Gemini / reset Otros). Funciones auxiliares `_pct_str` y `_reset_str` extraídas fuera del bucle.
 - [x] **Optimización de UX y ordenación en `list`**: Eliminación de columna redundante "Estado", visualización de cuenta activa en primera posición resaltada en verde brillante (`* <alias>`), ordenación ascendente del resto de cuentas por fecha de reinicio más próxima (identificación inmediata de la siguiente cuenta disponible) y flag `--refresh-all` (`-a`) para actualización en bloque de todas las cuentas. Auto-refresco de cuota en `set-active`.
 - [x] Suite ampliada a **152 tests unitarios e integración pasando**.
+- [x] **Diagnóstico `agyswitcher doctor`** *(2026-11-20)*: comprobación de solo lectura de agy, datos, cuentas, sesión frente a cuenta activa, antigüedad de la cuota, procesos y proyecto actual, con la solución de cada problema y emails enmascarados para poder compartir la salida.
 
 #### 6c — Sitio web de usuario (GitHub Pages) ✅
 - [x] Web con MkDocs Material sobre `docs/`: portada (problema, ventajas, pantallazos, cómo funciona, arranque rápido), manual, tutoriales y documentación técnica (`gabimarti.github.io/agyswitcher`).

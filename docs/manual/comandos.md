@@ -20,6 +20,7 @@ Todas las órdenes muestran su ayuda con `--help` (por ejemplo, `agyswitcher add
 | [`init`](#init) | Preparar un proyecto para continuar entre cuentas y agentes |
 | [`handoff`](#handoff) | Instrucciones para guardar y retomar el trabajo |
 | [`config`](#config) | Ajustes: umbral de cuota baja y copia al portapapeles |
+| [`doctor`](#doctor) | Diagnóstico de la instalación |
 
 ---
 
@@ -250,3 +251,23 @@ agyswitcher config auto-copy off       # no copiar instrucciones automáticament
 
 Un proyecto puede tener su propio umbral en `.agyswitcher.toml`, que tiene prioridad sobre
 el global (ver [Continuidad](continuidad.md#aviso-de-cuota-baja)).
+
+## doctor
+
+Revisa en un solo paso que todo esté en orden y explica cómo arreglar lo que no lo esté:
+
+- `agy` en el `PATH` y su versión.
+- Carpeta de datos, ajustes, cuentas registradas (y si alguna no tiene email) y estado.
+- Cuenta activa y si coincide con la sesión que `agy` tiene iniciada.
+- Antigüedad de los datos de cuota y cuentas agotadas cuyo reinicio ya pasó.
+- Procesos de `agy` abiertos.
+- Si la carpeta actual está preparada con `agyswitcher init` (`AGENTS.md` y `dev_mem/`) y
+  si su `.agyswitcher.toml` es válido.
+
+Solo lee: no cambia nada, no consulta la cuota y no lee tokens. Los emails aparecen
+enmascarados (`pe***@example.com`) y tu carpeta personal como `~`, para que puedas pegar la
+salida al pedir ayuda. Termina con código 1 si alguna comprobación falla.
+
+| Opción | Descripción |
+| :--- | :--- |
+| `--show-emails` | Mostrar los emails completos. |

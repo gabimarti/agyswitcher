@@ -6,7 +6,7 @@ Módulo: cli.py
 Autor: Gabriel Marti
 Website & Contact: https://gabimarti.github.io/
 Fecha inicio: 2026-11-03
-Ultimo cambio: 2026-11-19
+Ultimo cambio: 2026-11-20
 
 Descripción: Entry point de la interfaz de línea de comandos de AgySwitcher.
 """
@@ -47,6 +47,7 @@ from agyswitcher.config import (
     save_settings,
 )
 from agyswitcher.dashboard import build_dashboard_view
+from agyswitcher.doctor import CheckStatus, DoctorOptions, run_doctor, worst_status
 from agyswitcher.models import Account, AccountQuotaInfo, AppState, is_valid_email
 from agyswitcher.project import (
     AGENT_POINTER_FILES,
@@ -2055,6 +2056,64 @@ def watch(
             time.sleep(interval)
     except KeyboardInterrupt:
         typer.echo("\nModo watch detenido por el usuario.")
+
+
+_DOCTOR_LABELS = {
+    CheckStatus.OK: "[green]OK[/green]",
+    CheckStatus.INFO: "[cyan]info[/cyan]",
+    CheckStatus.WARN: "[yellow]aviso[/yellow]",
+    CheckStatus.FAIL: "[bold red]error[/bold red]",
+}
+
+
+@app.command(name="doctor")
+def doctor(
+    show_emails: Annotated[
+        bool,
+        typer.Option(
+            "--show-emails",
+            help="Mostrar los emails completos (por defecto se enmascaran para poder compartir "
+            "la salida).",
+        ),
+    ] = False,
+) -> None:
+    """Diagnostica la instalación: agy, cuentas, sesión, datos de cuota y proyecto actual.
+
+    Solo lee: no cambia nada, no consulta la cuota y no lee tokens. Sale con código 1 si
+    alguna comprobación falla. Ejemplo: agyswitcher doctor
+    """
+    checks = run_doctor(
+        Path.cwd(),
+        DoctorOptions(show_emails=show_emails),
+        email_detector=detect_active_email,
+        process_lister=find_running_agy_processes,
+    )
+    table = Table(box=box.ROUNDED, title="Diagnóstico de AgySwitcher", show_lines=False)
+    table.add_column("Estado", no_wrap=True)
+    table.add_column("Comprobación", style="bold", no_wrap=True)
+    table.add_column("Detalle")
+    for check in checks:
+        detail = escape(check.detail)
+        if check.hint and check.status is not CheckStatus.OK:
+            detail += "\n[dim]-> " + escape(check.hint) + "[/dim]"
+        table.add_row(_DOCTOR_LABELS[check.status], escape(check.name), detail)
+    console.print(table)
+
+    counts = {status: sum(c.status is status for c in checks) for status in CheckStatus}
+    summary = (
+        f"{counts[CheckStatus.FAIL]} errores · {counts[CheckStatus.WARN]} avisos · "
+        f"{counts[CheckStatus.OK]} correctas"
+    )
+    worst = worst_status(checks)
+    if worst is CheckStatus.FAIL:
+        console.print(f"[bold red]{summary}[/bold red]")
+        raise typer.Exit(code=1)
+    if worst is CheckStatus.WARN:
+        console.print(f"[yellow]{summary}[/yellow]")
+    else:
+        console.print(f"[green]{summary}. Todo en orden.[/green]")
+    if not show_emails:
+        console.print("[dim]Los emails aparecen enmascarados; puedes compartir esta salida.[/dim]")
 
 
 @app.command(

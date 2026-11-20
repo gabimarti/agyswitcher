@@ -6,6 +6,11 @@ Todos los cambios relevantes de AgySwitcher se documentan en este fichero.
 
 ### Añadido
 
+- Comando `agyswitcher doctor`: diagnóstico de la instalación (agy y su versión, cuentas,
+  estado, sesión de `agy` frente a la cuenta activa, antigüedad de los datos de cuota,
+  procesos abiertos y preparación del proyecto actual) con cómo arreglar cada problema. Solo
+  lee, enmascara los emails para poder compartir la salida y sale con código 1 si algo falla.
+  La plantilla de errores de GitHub pide su salida.
 - Sección «Apoya el proyecto» en la portada de la web y en el README con un botón para invitar
   a un café en Ko-fi (en la web, enlace directo sin cargar scripts de terceros), y botón
   «Sponsor» en GitHub.

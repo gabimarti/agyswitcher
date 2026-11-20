@@ -406,6 +406,7 @@ agyswitcher/src/agyswitcher/
 ├── project.py              # init (AGENTS.md, dev_mem/), handoff y umbral de cuota baja
 ├── ai_models.py            # Modelos disponibles y preferencias por pool
 ├── clipboard.py            # Copia al portapapeles de Windows (ctypes)
+├── doctor.py               # Diagnóstico de solo lectura ('doctor'): emails enmascarados
 └── dashboard.py            # Panel TUI
 ```
 

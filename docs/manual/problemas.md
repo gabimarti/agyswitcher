@@ -1,5 +1,9 @@
 # Problemas frecuentes
 
+Antes de nada, ejecuta `agyswitcher doctor`: revisa la instalación, la sesión de `agy` y
+el proyecto actual, y dice cómo arreglar lo que encuentre. Su salida no muestra los emails
+completos, así que puedes pegarla al [pedir ayuda](https://github.com/gabimarti/agyswitcher/issues).
+
 ## Al cambiar de cuenta
 
 **`set-active` sigue esperando y no termina.**

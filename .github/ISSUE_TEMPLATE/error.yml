@@ -32,6 +32,12 @@ body:
       label: Versión de Windows
       placeholder: "Windows 11 23H2"
   - type: textarea
+    id: doctor
+    attributes:
+      label: Salida de `agyswitcher doctor`
+      description: Enmascara los emails por defecto; revisa que no quede ningún dato personal.
+      render: text
+  - type: textarea
     id: steps
     attributes:
       label: Pasos para reproducirlo
