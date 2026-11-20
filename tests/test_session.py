@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 
 from agyswitcher.session import (
+    LogFollower,
     LoginWaitResult,
     LoginWaitStatus,
     detect_new_login_email,
@@ -198,3 +199,40 @@ def test_wait_for_login_ctrl_c_cancels(tmp_path: Path) -> None:
     result = wait_for_login("b@example.com", offsets, base_dir=base, sleep=_interrupt)
 
     assert result == LoginWaitResult(LoginWaitStatus.CANCELLED, "a@example.com")
+
+
+# ---------------------------------------------------------------------------
+# LogFollower: seguimiento de líneas nuevas durante 'run'
+# ---------------------------------------------------------------------------
+
+
+def test_log_follower_returns_only_new_complete_lines(tmp_path: Path) -> None:
+    """Ignora lo anterior a la marca y retiene la línea a medio escribir."""
+    base = _base(tmp_path)
+    log = base / "cli.log"
+    _append(log, NOISE)
+    follower = LogFollower(base)
+    assert follower.poll() == []
+
+    _append(log, LOGIN_A + "E1118 10:02:00.000000  1 x.go:1] parcial")
+    assert follower.poll() == [LOGIN_A.rstrip("\n")]
+    _append(log, " fin\n")
+    assert follower.poll() == ["E1118 10:02:00.000000  1 x.go:1] parcial fin"]
+    assert follower.poll() == []
+
+
+def test_log_follower_reads_new_and_recreated_files_from_start(tmp_path: Path) -> None:
+    """Un log creado tras la marca (o recreado más corto) se lee desde el principio."""
+    base = _base(tmp_path)
+    log = base / "cli.log"
+    _append(log, NOISE * 3)
+    follower = LogFollower(base)
+
+    log.write_text(LOGIN_B, encoding="utf-8", newline="")  # agy arranca: log nuevo
+    _append(base / "log" / "cli-20261118_100000.log", LOGIN_A)
+    assert sorted(follower.poll()) == sorted([LOGIN_A.rstrip("\n"), LOGIN_B.rstrip("\n")])
+
+
+def test_log_follower_missing_dir_returns_nothing(tmp_path: Path) -> None:
+    """Sin carpeta de logs no falla."""
+    assert LogFollower(tmp_path / "no-existe").poll() == []

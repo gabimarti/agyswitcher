@@ -106,3 +106,21 @@ def test_quota_event_raw_message_is_sanitized() -> None:
     assert event is not None
     assert "ya29.FAKE_TOKEN_value" not in event.raw_message
     assert "[REDACTED]" in event.raw_message
+
+
+def test_detect_agy_individual_quota_reached() -> None:
+    """Mensaje real de agy al agotar la cuota (en pantalla y en cli.log)."""
+    detector = QuotaDetector(default_pool="gemini")
+    screen = (
+        "⚠ Individual quota reached. Please upgrade your subscription to increase your "
+        "limits. Resets in 147h59m43s."
+    )
+    log = (
+        "E1120 16:53:48.324666   45692 errorreport.go:285] agent executor error: generating "
+        "and executing: RESOURCE_EXHAUSTED (code 429): Individual quota reached. Please "
+        "upgrade your subscription to increase your limits. Resets in 147h59m43s."
+    )
+    for line in (screen, log):
+        event = detector.detect_in_line(line)
+        assert event is not None
+        assert event.pool == "gemini"

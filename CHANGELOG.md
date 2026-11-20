@@ -11,6 +11,11 @@ Todos los cambios relevantes de AgySwitcher se documentan en este fichero.
 
 ### Corregido
 
+- `run` no detectaba la cuota agotada con `agy` en modo interactivo: el aviso
+  «Individual quota reached» no estaba entre los mensajes reconocidos y, además, en ese modo
+  `agy` no lo envía por la salida que vigila AgySwitcher. Ahora `run` también sigue los
+  registros de `agy` mientras está abierto (solo sus líneas de error) y el aviso pide salir de
+  `agy` para indicar cómo continuar.
 - Web, página de arquitectura: los diagramas dibujados con caracteres de caja se veían
   desalineados; ahora son diagramas Mermaid (se adaptan al modo claro y oscuro), la estructura
   de módulos es una tabla y las listas de las vías de detección de cuota se muestran bien.

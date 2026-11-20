@@ -2097,3 +2097,55 @@ def test_verified_switch_copies_resume_prompt(
     from agyswitcher.project import DEFAULT_RESUME_PROMPT
 
     assert copied == [DEFAULT_RESUME_PROMPT]
+
+
+_AGY_LOG_429 = (
+    "E1120 16:53:48.324666   45692 errorreport.go:285] generating and executing: "
+    "RESOURCE_EXHAUSTED (code 429): Individual quota reached. Please upgrade your "
+    "subscription to increase your limits. Resets in 147h59m43s.\n"
+)
+
+
+def _fake_agy_writing_log(lines: list[str], code: int = 0) -> object:
+    """agy interactivo: no saca nada por la salida capturada, pero escribe en cli.log."""
+
+    def _runner(args: list[str], **_kwargs: object) -> int:
+        log = Path.home() / ".gemini" / "antigravity-cli" / "cli.log"
+        log.parent.mkdir(parents=True, exist_ok=True)
+        with log.open("a", encoding="utf-8", newline="") as handle:
+            handle.writelines(lines)
+        return code
+
+    return _runner
+
+
+def test_run_detects_quota_exhaustion_from_agy_logs() -> None:
+    """Con agy en modo interactivo la cuota agotada se detecta en sus logs."""
+    _two_accounts()
+    log = Path.home() / ".gemini" / "antigravity-cli" / "cli.log"
+    log.parent.mkdir(parents=True, exist_ok=True)
+    log.write_text(_AGY_LOG_429, encoding="utf-8")  # error antiguo: no debe contar
+
+    with patch(
+        "agyswitcher.cli.run_agy_process", side_effect=_fake_agy_writing_log([_AGY_LOG_429])
+    ):
+        result = runner.invoke(app, ["run"])
+
+    assert "Cuota agotada (gemini) en 'cuenta-1'" in result.output
+    assert "Durante la ejecución se agotó la cuota (gemini)" in result.output
+    assert "cuenta-1" in load_state().gemini_quota_exhausted
+
+
+def test_run_ignores_old_and_non_error_log_lines() -> None:
+    """Ni los errores anteriores a run ni las trazas que no son de error cuentan."""
+    _two_accounts()
+    log = Path.home() / ".gemini" / "antigravity-cli" / "cli.log"
+    log.parent.mkdir(parents=True, exist_ok=True)
+    log.write_text(_AGY_LOG_429, encoding="utf-8")
+    trace = "I1120 16:50:00.000000  1 quota_manager.go:45] retry after rate limit\n"
+
+    with patch("agyswitcher.cli.run_agy_process", side_effect=_fake_agy_writing_log([trace])):
+        result = runner.invoke(app, ["run"])
+
+    assert "Cuota agotada" not in result.output
+    assert load_state().gemini_quota_exhausted == {}

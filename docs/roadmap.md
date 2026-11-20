@@ -35,6 +35,8 @@ flowchart LR
 
 - `run` lanza `agy` sin intérprete de comandos intermedio, muestra su salida en tiempo real y
   la sanea (tokens, cookies y cabeceras de autorización) antes de cualquier registro.
+- Mientras `agy` está abierto, `run` vigila también sus registros, así que detecta la cuota
+  agotada aunque `agy` se use en modo interactivo.
 - `Ctrl+C` y cierre limpio de todo el árbol de procesos en Windows.
 - Las consultas a `agy` (cuota, modelos, versión) tienen un tiempo máximo garantizado y nunca
   esperan entrada del teclado.
@@ -100,6 +102,8 @@ flowchart LR
 
 ## Próximas mejoras 🔄
 
+- [ ] Al agotarse la cuota, retomar la misma conversación de `agy` con la siguiente cuenta, sin
+  salir de `run` ni copiar instrucciones.
 - [ ] Salida `--json` en `list`, `status` y `usage`, con códigos de salida documentados, para
   usar AgySwitcher desde scripts.
 - [ ] Autocompletado de comandos y alias de cuentas en PowerShell.

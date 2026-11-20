@@ -16,6 +16,7 @@ from __future__ import annotations
 import contextlib
 import re
 import sys
+import threading
 import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -76,6 +77,7 @@ from agyswitcher.runner import (
 )
 from agyswitcher.session import (
     DEFAULT_LOGIN_TIMEOUT,
+    LogFollower,
     LoginWaitStatus,
     snapshot_log_offsets,
     wait_for_login,
@@ -2251,6 +2253,13 @@ def models(
     )
 
 
+_LOG_ERROR_LINE = re.compile(r"^E\d{4}\s")
+"""Línea de error de los logs de agy (formato glog: 'E1120 16:53:48.324666 ...')."""
+
+_LOG_POLL_INTERVAL = 1.0
+"""Segundos entre lecturas de los logs de agy durante 'run'."""
+
+
 @app.command(
     help=(
         "Ejecuta agy detectando la cuota agotada (y proponiendo cómo continuar) y avisando de "
@@ -2305,14 +2314,18 @@ def run(
     detector = QuotaDetector(default_pool=state.active_model_group)
     detected_pools: list[str] = []
 
+    detection_lock = threading.Lock()
+
     def _on_process_line(line: str) -> None:
         event = detector.detect_in_line(line)
-        if event is not None and state.active is not None:
+        if event is None or state.active is None:
+            return
+        with detection_lock:
             if event.pool not in detected_pools:
                 detected_pools.append(event.pool)
                 typer.secho(
-                    f"[AgySwitcher] Cuota agotada ({event.pool}) en '{state.active}'. "
-                    "Al salir de agy te indicaré cómo continuar.",
+                    f"\a\n[AgySwitcher] Cuota agotada ({event.pool}) en '{state.active}'. "
+                    "Sal de agy (/exit) y te indicaré cómo continuar.",
                     fg=typer.colors.YELLOW,
                     err=True,
                 )
@@ -2329,6 +2342,22 @@ def run(
                 with contextlib.suppress(StateError):
                     save_state(state)
 
+    def _on_log_line(line: str) -> None:
+        # En modo interactivo agy no muestra sus errores en la salida que se captura, pero sí
+        # los escribe en sus logs. Solo cuentan las líneas de error (glog 'E'), no las trazas.
+        if _LOG_ERROR_LINE.match(line):
+            _on_process_line(line)
+
+    stop_following = threading.Event()
+    follower = LogFollower()
+
+    def _follow_logs() -> None:
+        while not stop_following.wait(_LOG_POLL_INTERVAL):
+            for log_line in follower.poll():
+                _on_log_line(log_line)
+
+    follow_thread = threading.Thread(target=_follow_logs, name="agy-log-follower", daemon=True)
+    follow_thread.start()
     try:
         exit_code = run_agy_process(args=effective_args, on_line=_on_process_line)
     except AgyNotFoundError as err:
@@ -2345,6 +2374,11 @@ def run(
             err=True,
         )
         raise typer.Exit(code=1) from err
+    finally:
+        stop_following.set()
+        follow_thread.join(timeout=_LOG_POLL_INTERVAL * 2)
+    for log_line in follower.poll():  # Lo escrito justo antes de cerrarse agy.
+        _on_log_line(log_line)
 
     if detected_pools:
         typer.secho(

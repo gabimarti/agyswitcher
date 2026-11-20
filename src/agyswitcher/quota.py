@@ -6,7 +6,7 @@ Módulo: quota.py
 Autor: Gabriel Marti
 Website & Contact: https://gabimarti.github.io/
 Fecha inicio: 2026-11-03
-Ultimo cambio: 2026-11-06
+Ultimo cambio: 2026-11-20
 
 Descripción: Módulo de detección y análisis de errores de cuota para Antigravity CLI (agy).
 
@@ -27,6 +27,8 @@ from agyswitcher.runner import sanitize_line
 # Patrones generales de cuota agotada o limitación de tasa (HTTP 429 / RESOURCE_EXHAUSTED)
 QUOTA_PATTERNS: Final[list[re.Pattern[str]]] = [
     re.compile(r"(?i)\b(?:quota\s+exceeded|exhausted\s+(?:your\s+)?quota|out\s+of\s+quota)\b"),
+    # agy: "Individual quota reached. Please upgrade your subscription ..."
+    re.compile(r"(?i)\bquota\s+(?:reached|exhausted)\b"),
     re.compile(r"(?i)\b(?:rate\s+limit(?:ed)?|too\s+many\s+requests)\b"),
     re.compile(r"(?i)\b(?:resource[_\s]?exhausted)\b"),
     re.compile(r"(?i)\b(?:weekly\s+limit\s+(?:reached|exhausted|exceeded))\b"),

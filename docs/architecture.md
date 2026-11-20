@@ -253,11 +253,16 @@ con `taskkill /T /F` al expirar el tiempo y acota también la espera posterior.
 
 AgySwitcher detecta el agotamiento de cuota por dos vías complementarias:
 
-**Vía A — Streaming de stdout/stderr de `agy`** (tiempo real):
+**Vía A — Durante `run`** (tiempo real):
 
 - Patrones de texto en la salida de `agy` indicativos de rate limit o cuota agotada.
 - Ejemplos de patrones a detectar (sin comprometer la seguridad del log):
-  - `"429"` / `"RESOURCE_EXHAUSTED"` / `"quota"` / `"rate limit"` / `"too many requests"`
+  - `"429"` / `"RESOURCE_EXHAUSTED"` / `"quota reached"` / `"rate limit"` / `"too many requests"`
+- En modo interactivo `agy` dibuja su interfaz en la consola y el error no llega como línea a
+  la salida capturada, así que `run` sigue además, en paralelo, las líneas nuevas de los logs
+  de `agy` escritas desde su arranque. De los logs solo cuentan las líneas de error (`E…`
+  en formato glog), por ejemplo
+  `RESOURCE_EXHAUSTED (code 429): Individual quota reached. ... Resets in 147h59m43s.`
 
 **Vía B — Log file watch** (modo `watch`):
 

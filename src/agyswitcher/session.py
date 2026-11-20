@@ -6,7 +6,7 @@ Módulo: session.py
 Autor: Gabriel Marti
 Website & Contact: https://gabimarti.github.io/
 Fecha inicio: 2026-11-18
-Ultimo cambio: 2026-11-18
+Ultimo cambio: 2026-11-20
 
 Descripción: Verificación de inicios de sesión de agy mediante contenido nuevo de los logs.
 
@@ -107,6 +107,45 @@ def _read_new_complete_lines(path: Path, start: int) -> str:
     if last_newline < 0:
         return ""  # Línea aún a medio escribir: se evaluará en la siguiente consulta.
     return data[: last_newline + 1].decode("utf-8", errors="replace")
+
+
+class LogFollower:
+    """Sigue las líneas nuevas de los logs de agy a partir de una marca.
+
+    La marca se toma al crearlo. Los ficheros que aparecen después (agy crea un log nuevo en
+    cada arranque) se leen desde el principio. Solo devuelve líneas completas; una línea a
+    medio escribir se entrega en la siguiente consulta. ``cli.log`` es un enlace duro al log
+    más reciente de ``log/``, así que una misma línea puede llegar dos veces: quien la procese
+    debe tolerar duplicados.
+    """
+
+    def __init__(self, base_dir: Path | None = None) -> None:
+        self._root = base_dir or default_session_log_dir()
+        self._offsets = snapshot_log_offsets(self._root)
+
+    def poll(self) -> list[str]:
+        """Devuelve las líneas completas escritas desde la consulta anterior."""
+        lines: list[str] = []
+        for path in _session_log_files(self._root):
+            start = self._offsets.get(path, 0)
+            try:
+                with path.open("rb") as handle:
+                    size = handle.seek(0, 2)
+                    if size < start:
+                        start = 0  # Truncado o recreado: todo su contenido es nuevo.
+                    start = max(start, size - MAX_NEW_BYTES_PER_FILE)
+                    handle.seek(start)
+                    data = handle.read(size - start)
+            except OSError:
+                continue
+            last_newline = data.rfind(b"\n")
+            if last_newline < 0:
+                self._offsets[path] = start
+                continue
+            self._offsets[path] = start + last_newline + 1
+            text = data[: last_newline + 1].decode("utf-8", errors="replace")
+            lines.extend(text.splitlines())
+        return lines
 
 
 def detect_new_login_email(

@@ -138,8 +138,9 @@ activa no tenía email, le asigna el detectado.
 
 ## run
 
-Ejecuta `agy` mostrando su salida, detecta en ella la cuota agotada y la anota. Antes de
-lanzar avisa si la cuota es baja. Todo lo que va después de `--` se pasa a `agy`. Si tienes
+Ejecuta `agy` y, mientras está abierto, vigila su salida y sus registros para detectar la
+cuota agotada y anotarla (en modo interactivo `agy` muestra el aviso en pantalla, pero solo lo
+deja por escrito en sus registros). Antes de lanzar avisa si la cuota es baja. Todo lo que va después de `--` se pasa a `agy`. Si tienes
 un modelo preferido para el pool activo (ver [`models`](#models)), se añade `--model`
 automáticamente salvo que indiques otro.
 
