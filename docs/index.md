@@ -114,6 +114,14 @@ Sigue el [tutorial de proyecto nuevo](tutoriales/proyecto-nuevo.md) o el de
 Windows 10 u 11 y Antigravity CLI (`agy`). Con el [instalador](manual/instalacion.md) no
 necesitas Python ni permisos de administrador.
 
+## Apoya el proyecto
+
+AgySwitcher es y seguirá siendo **gratuito y de código abierto**. Si te resulta útil y quieres
+apoyarlo, puedes invitarme a un café. Es totalmente voluntario y no da acceso a nada extra:
+solo ayuda a dedicarle más horas.
+
+[![](assets/kofi-cup.png){ .kofi-cup }Invítame a un café en Ko-fi](https://ko-fi.com/gabimarti){ .kofi-button }
+
 ---
 
 AgySwitcher es software libre bajo licencia

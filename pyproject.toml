@@ -47,7 +47,7 @@ build = [
 ]
 
 docs = [
-    "mkdocs-material>=9.5",   # web de usuario (mkdocs.yml, docs/)
+    "zensical==0.1.2",   # web de usuario (mkdocs.yml, docs/); beta: versión fija y probada
 ]
 
 [build-system]

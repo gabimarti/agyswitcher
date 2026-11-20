@@ -1,0 +1,28 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later */
+/* Estilos propios de la web de AgySwitcher. */
+
+/* Enlace a Ko-fi con el aspecto de su botón oficial, pero sin cargar su script
+   (sin peticiones a terceros). Mismo aspecto en modo claro y oscuro. */
+.md-typeset a.kofi-button {
+  display: inline-block;
+  background: #72a4f2;
+  color: #04122e;
+  padding: 0.45rem 1rem;
+  border-radius: 7px;
+  font-weight: 700;
+  text-decoration: none;
+  box-shadow: 1px 1px 0 rgba(0, 0, 0, 0.2);
+}
+
+.md-typeset a.kofi-button:hover,
+.md-typeset a.kofi-button:focus {
+  color: #04122e;
+  opacity: 0.85;
+}
+
+.md-typeset a.kofi-button img.kofi-cup {
+  width: 20px;
+  height: 16px;
+  vertical-align: middle;
+  margin: 0 6px 3px 0;
+}

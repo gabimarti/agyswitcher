@@ -2,6 +2,18 @@
 
 Todos los cambios relevantes de AgySwitcher se documentan en este fichero.
 
+## [Sin publicar]
+
+### Añadido
+
+- Sección «Apoya el proyecto» en la portada de la web con un botón para invitar a un café en
+  Ko-fi (enlace directo, sin cargar scripts de terceros).
+
+### Cambiado
+
+- La web se construye con Zensical (aspecto clásico) en lugar de MkDocs Material, con la
+  misma configuración y las mismas direcciones.
+
 ## [1.2.0] - 2026-11-19
 
 Umbral de cuota baja configurable con las instrucciones listas en el portapapeles, avisos

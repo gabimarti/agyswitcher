@@ -34,6 +34,4 @@ jobs:
         run: python -m mypy src
 
       - name: Web (enlaces y estructura)
-        env:
-          NO_MKDOCS_2_WARNING: "1"
-        run: python -m mkdocs build --strict --site-dir site
+        run: zensical build --strict --clean

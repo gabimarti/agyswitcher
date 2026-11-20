@@ -153,6 +153,8 @@ flowchart TD
 - [x] Web con MkDocs Material sobre `docs/`: portada (problema, ventajas, pantallazos, cómo funciona, arranque rápido), manual, tutoriales y documentación técnica (`gabimarti.github.io/agyswitcher`).
 - [x] Pantallazos generados con cuentas ficticias.
 - [x] Construcción en modo estricto en la integración continua y publicación automática en GitHub Pages (al hacerse público el repositorio).
+- [x] **Migración a Zensical** *(2026-11-20)*: la web se construye con Zensical (aspecto `classic`, sucesor de MkDocs Material) a partir del mismo `mkdocs.yml`; mismas URLs y modo estricto en CI.
+- [x] **Apoyo al proyecto** *(2026-11-20)*: sección en la portada con un botón de Ko-fi propio (sin cargar scripts de terceros).
 
 ---
 

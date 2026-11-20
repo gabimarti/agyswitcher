@@ -440,7 +440,7 @@ agyswitcher/src/agyswitcher/
   (un test comprueba que coinciden) y el `.txt` se regenera con `uv pip compile`
   (comando en su cabecera).
 - Sin firma de código por ahora (aviso de SmartScreen documentado; SHA-256 publicados).
-- Web: MkDocs Material (`mkdocs.yml`) sobre `docs/` (portada `docs/index.md`, manual,
+- Web: Zensical (aspecto `classic`, configuración en `mkdocs.yml`) sobre `docs/` (portada `docs/index.md`, manual,
   tutoriales y documentación técnica). `ci.yml` la construye en modo estricto (enlaces rotos
   = error); `docs.yml` la publica en GitHub Pages cuando el repositorio es público. Los
   pantallazos (`docs/assets/capturas/*.svg`) se generan con cuentas ficticias.

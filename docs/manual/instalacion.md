@@ -100,7 +100,7 @@ pytest
 
 ```powershell
 python -m pip install -e ".[docs]"
-mkdocs serve      # http://127.0.0.1:8000
+zensical serve    # http://127.0.0.1:8000
 ```
 
 ### Compilar el ejecutable y el instalador
