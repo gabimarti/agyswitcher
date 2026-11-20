@@ -26,37 +26,24 @@ el agotamiento de cuota (rate limit) de forma transparente para el usuario.
 
 ## 2. Visión General del Sistema
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                   USUARIO (PowerShell / Windows Terminal)    │
-└──────────────────────────────┬──────────────────────────────┘
-                               │  agyswitcher run / watch
-                               ▼
-┌─────────────────────────────────────────────────────────────┐
-│               AGYSWITCHER ORCHESTRATOR (CLI Python)          │
-│                                                              │
-│  ┌──────────────┐  ┌──────────────┐  ┌───────────────────┐  │
-│  │ Cuentas      │  │   Runner     │  │  Quota Detector   │  │
-│  │ (add/list/   │  │  (run/watch) │  │  + Rotator +      │  │
-│  │  status)     │  │              │  │  Session (rotate) │  │
-│  └──────┬───────┘  └──────┬───────┘  └────────┬──────────┘  │
-│         │                 │                   │              │
-│  ┌──────▼─────────────────▼───────────────────▼───────────┐ │
-│  │             State Manager                               │ │
-│  │  %USERPROFILE%\.agyswitcher\config.json                 │ │
-│  │  %USERPROFILE%\.agyswitcher\state.json                  │ │
-│  └─────────────────────────────────────────────────────────┘ │
-└──────────────────────────┬──────────────────────────────────┘
-                           │  subprocess (agy.exe)
-                           ▼
-┌─────────────────────────────────────────────────────────────┐
-│                        AGY.EXE                               │
-│    C:\Users\<User>\AppData\Local\agy\bin\agy.exe             │
-│    Lee configuración de: %USERPROFILE%\.gemini\              │
-└──────────────────────────┬──────────────────────────────────┘
-                           │  HTTPS / gRPC
-                           ▼
-                    [ Gemini API / Google ]
+```mermaid
+flowchart TB
+    U["Usuario<br/>PowerShell o<br/>Windows Terminal"]
+    subgraph AGS["AgySwitcher (CLI en Python)"]
+        C["Cuentas<br/>add · list · status"]
+        R["Runner<br/>run · watch"]
+        Q["Detector de cuota,<br/>Rotator y Session<br/>(rotate, set-active)"]
+        S[("State Manager<br/>%USERPROFILE%\.agyswitcher<br/>config.json · state.json")]
+        C --> S
+        R --> S
+        Q --> S
+    end
+    A["agy.exe<br/>%LOCALAPPDATA%\agy\bin\agy.exe<br/>configuración en %USERPROFILE%\.gemini"]
+    G["Gemini API / Google"]
+    U -- "agyswitcher run / watch" --> AGS
+    AGS -- "subprocess" --> A
+    A -. "logs (solo lectura)" .-> AGS
+    A -- "HTTPS / gRPC" --> G
 ```
 
 ---
@@ -232,17 +219,12 @@ El Runner captura `stdout` y `stderr` de `agy.exe` mediante un hilo lector
 dedicado para permitir streaming en tiempo real **sin bloquear el bucle principal**,
 y aplica sanitización antes de cualquier escritura en log:
 
-```
-agy.exe stdout/stderr
-    │
-    ▼ (hilo lector)
-SanitizingReader
-    ├── Redacta patrones: token=, authorization:, cookie:, refresh_token=, access_token=
-    ├── Pasa al ConsoleOutput (reenvía al terminal del usuario tal cual)
-    └── Escribe en log (solo líneas sanitizadas)
-    │
-    ▼
-QuotaDetector.feed(line)   ← analiza cada línea en busca de señales de cuota agotada
+```mermaid
+flowchart TB
+    A["stdout / stderr de agy.exe"] -- "hilo lector" --> S["SanitizingReader<br/>(redacta tokens, cookies<br/>y cabeceras de autorización)"]
+    S --> T["Terminal<br/>del usuario"]
+    S --> L["Log<br/>(solo líneas saneadas)"]
+    S --> Q["QuotaDetector.feed(line)<br/>(señales de cuota agotada)"]
 ```
 
 ### 5.3 Señales y terminación limpia en Windows
@@ -278,11 +260,13 @@ con `taskkill /T /F` al expirar el tiempo y acota también la espera posterior.
 AgySwitcher detecta el agotamiento de cuota por dos vías complementarias:
 
 **Vía A — Streaming de stdout/stderr de `agy`** (tiempo real):
+
 - Patrones de texto en la salida de `agy` indicativos de rate limit o cuota agotada.
 - Ejemplos de patrones a detectar (sin comprometer la seguridad del log):
   - `"429"` / `"RESOURCE_EXHAUSTED"` / `"quota"` / `"rate limit"` / `"too many requests"`
 
 **Vía B — Log file watch** (modo `watch`):
+
 - Lectura incremental de los archivos de log de `agy` en
   `%USERPROFILE%\.gemini\antigravity-cli\log\cli-<timestamp>.log`,
   con seguimiento de offset por archivo (`log-watch.json`).
@@ -290,28 +274,27 @@ AgySwitcher detecta el agotamiento de cuota por dos vías complementarias:
 
 ### 6.2 Algoritmo de rotación — Standby Pool
 
-```
-Cuentas registradas: [A (activa), B (standby), C (standby)]
+Cuentas registradas: A (activa), B y C. Al agotarse la cuota en A, se anota el pool
+afectado como agotado y se elige el siguiente paso (`rotator.select_next_candidate`):
 
-Evento: cuota agotada en cuenta A
-  │
-  ▼
-Selección de candidato (rotator.select_next_candidate):
-  ├── 1. Otro pool de A sin agotar -> cambio de pool (sin sesión)
-  ├── 2. Siguiente cuenta (orden circular desde A) con un pool sin agotar
-  ├── 3. Igual que 1 y 2, aceptando pools agotados cuyo reinicio previsto ya pasó
-  │      (sin confirmar)
-  └── Ninguna -> "según los datos guardados, todas agotadas": antigüedad del dato,
-                 reinicio previsto de cada cuenta y sugerencia de la de reinicio más
-                 próximo (rotator.suggest_account_to_check)
-  │
-  ▼
-Cambio:
-  ├── Registrar A con: cuota agotada en el pool afectado
-  ├── Si A tiene el otro pool libre -> cambio de pool (sin sesión)
-  └── Si no -> proponer B con su email: "agyswitcher set-active B"
-                (cambio guiado, §3.3: requiere que el usuario inicie sesión;
-                 al terminar se consulta la cuota de B en vivo)
+- Las cuentas se recorren en orden circular a partir de A.
+- Al proponer B se indica su email; el cambio es guiado (§3.3) y al terminar se consulta la
+  cuota de B en vivo.
+- Un pool agotado cuyo reinicio previsto ya pasó se acepta avisando de que su cuota está sin
+  confirmar.
+- Si todas figuran agotadas según los datos guardados, se muestra la antigüedad del dato y el
+  reinicio previsto de cada cuenta, y se sugiere la de reinicio más próximo
+  (`rotator.suggest_account_to_check`).
+
+```mermaid
+flowchart TB
+    E["Cuota agotada en A<br/>(se anota el pool)"] --> P1{"¿Otro pool<br/>de A libre?"}
+    P1 -- "sí" --> CP["Cambio de pool<br/>(sin sesión)"]
+    P1 -- "no" --> P2{"¿Otra cuenta<br/>con pool libre?"}
+    P2 -- "sí" --> PB["Propone B:<br/>set-active B<br/>(cambio guiado)"]
+    P2 -- "no" --> P3{"¿Reinicio<br/>previsto pasado?"}
+    P3 -- "sí" --> PU["La propone<br/>(sin confirmar)"]
+    P3 -- "no" --> N["Todas agotadas:<br/>sugiere cuál<br/>comprobar primero"]
 ```
 
 **Reinicio previsto de un pool agotado** (`AppState.estimated_reset`): la fecha de reinicio
@@ -357,13 +340,7 @@ agyswitcher add personal --email personal@example.com
 agyswitcher add trabajo --email trabajo@example.com --no-activate
 
 # Ver el estado
-agyswitcher list
-# ┌─────────────┬──────────┬───────────────────────┐
-# │ Alias       │ Estado   │ Reset estimado cuota   │
-# ├─────────────┼──────────┼───────────────────────┤
-# │ personal ★  │ activa   │ -                      │
-# │ trabajo     │ standby  │ -                      │
-# └─────────────┴──────────┴───────────────────────┘
+agyswitcher list    # cuota de cada cuenta (ver el pantallazo en la portada)
 
 # Lanzar agy con detección de cuota
 agyswitcher run -- --model "claude-sonnet" -p "Hola"
@@ -389,26 +366,27 @@ agyswitcher run -- --model "claude-sonnet" -p "Hola"
 
 ## 9. Estructura del Paquete Python (Fase 2+)
 
-```
-agyswitcher/src/agyswitcher/
-├── __init__.py
-├── cli.py                  # Entry point CLI (typer) y cambio de cuenta guiado
-├── config.py               # Lectura y escritura de config.json
-├── state.py                # Lectura y escritura atómica de state.json
-├── models.py               # Account, AppState, AccountQuotaInfo
-├── runner.py               # Lanzador de agy.exe (streaming, señales, sanitización, procesos)
-├── quota.py                # Detector de cuota agotada en líneas y logs
-├── usage.py                # Consulta de cuota (/usage) y detección del email de la sesión
-├── rotator.py              # Selección de la siguiente cuenta/pool y registro de cambios
-├── session.py              # Verificación de inicio de sesión por contenido nuevo de logs
-├── version.py              # Versión semántica, número de compilación y versión de Windows
-├── _build.py              # Número de compilación (None en el código fuente)
-├── project.py              # init (AGENTS.md, dev_mem/), handoff y umbral de cuota baja
-├── ai_models.py            # Modelos disponibles y preferencias por pool
-├── clipboard.py            # Copia al portapapeles de Windows (ctypes)
-├── doctor.py               # Diagnóstico de solo lectura ('doctor'): emails enmascarados
-└── dashboard.py            # Panel TUI
-```
+Módulos de `agyswitcher/src/agyswitcher/`:
+
+| Módulo | Responsabilidad |
+| :--- | :--- |
+| `__init__.py` | Versión y nombre de la aplicación |
+| `cli.py` | Entry point CLI (typer) y cambio de cuenta guiado |
+| `config.py` | Lectura y escritura de config.json |
+| `state.py` | Lectura y escritura atómica de state.json |
+| `models.py` | Account, AppState, AccountQuotaInfo |
+| `runner.py` | Lanzador de agy.exe (streaming, señales, sanitización, procesos) |
+| `quota.py` | Detector de cuota agotada en líneas y logs |
+| `usage.py` | Consulta de cuota (/usage) y detección del email de la sesión |
+| `rotator.py` | Selección de la siguiente cuenta/pool y registro de cambios |
+| `session.py` | Verificación de inicio de sesión por contenido nuevo de logs |
+| `version.py` | Versión semántica, número de compilación y versión de Windows |
+| `_build.py` | Número de compilación (None en el código fuente) |
+| `project.py` | init (AGENTS.md, dev_mem/), handoff y umbral de cuota baja |
+| `ai_models.py` | Modelos disponibles y preferencias por pool |
+| `clipboard.py` | Copia al portapapeles de Windows (ctypes) |
+| `doctor.py` | Diagnóstico de solo lectura ('doctor'): emails enmascarados |
+| `dashboard.py` | Panel TUI |
 
 ---
 
