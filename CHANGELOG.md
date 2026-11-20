@@ -6,8 +6,9 @@ Todos los cambios relevantes de AgySwitcher se documentan en este fichero.
 
 ### Añadido
 
-- Sección «Apoya el proyecto» en la portada de la web con un botón para invitar a un café en
-  Ko-fi (enlace directo, sin cargar scripts de terceros).
+- Sección «Apoya el proyecto» en la portada de la web y en el README con un botón para invitar
+  a un café en Ko-fi (en la web, enlace directo sin cargar scripts de terceros), y botón
+  «Sponsor» en GitHub.
 
 ### Cambiado
 
