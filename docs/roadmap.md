@@ -172,6 +172,7 @@ flowchart TD
 ### Fase 8: Empaquetado Autónomo y Distribución en Windows (Desktop Standalone)
 - [x] **Lanzamiento v1.0.0** *(2026-11-18)*: primera versión pública, con instalador, ZIP portable y SHA-256 en *Releases* y web en GitHub Pages.
 - [x] **v1.1.0** *(2026-11-19)*: `run` propone cómo continuar al agotarse la cuota; consultas a `agy` con tiempo máximo garantizado (`add` ya no bloquea la consola).
+- [x] **v1.3.0** *(2026-11-20)*: comando `doctor`, guías «Uso en el día a día» y «Varios agentes y proveedores», web con Zensical, apoyo con Ko-fi e Inno Setup 6.7.4.
 - [x] **v1.2.0** *(2026-11-19)*: umbral de cuota baja configurable y copia de instrucciones al portapapeles, cuota restablecida antes de tiempo, lema y logotipo, revisión de seguridad (código y CI) y compilación reproducible.
 - [x] **Revisión de seguridad — código** *(2026-11-19)*: validación de alias y email al crear y al cargar `config.json`, texto de `agy` y del usuario escapado al mostrarlo (ya no puede hacer fallar los comandos), lectura acotada de los logs, historial limitado a 200 entradas y líneas de cuota saneadas. Suite: **252 tests**.
 - [x] **Revisión de seguridad — CI** *(2026-11-19)*: acciones de GitHub de los flujos de pruebas, web y compilación fijadas por SHA (con su versión en comentario) y Dependabot mensual para proponer sus actualizaciones.

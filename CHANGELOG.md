@@ -2,7 +2,10 @@
 
 Todos los cambios relevantes de AgySwitcher se documentan en este fichero.
 
-## [Sin publicar]
+## [1.3.0] - 2026-11-20
+
+Diagnóstico con `agyswitcher doctor`, guías de uso para el día a día y para combinar varios
+agentes, y web renovada.
 
 ### Añadido
 
@@ -24,6 +27,8 @@ Todos los cambios relevantes de AgySwitcher se documentan en este fichero.
 - La web se construye con Zensical (aspecto clásico) en lugar de MkDocs Material, con la
   misma configuración y las mismas direcciones.
 - Logotipo de la cabecera de la web un 25 % más grande, sin cambiar la altura de la cabecera.
+- El instalador se compila con Inno Setup 6.7.4 y las dependencias fijadas de la compilación
+  se han revisado.
 
 ## [1.2.0] - 2026-11-19
 
