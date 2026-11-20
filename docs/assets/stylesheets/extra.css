@@ -26,3 +26,14 @@
   vertical-align: middle;
   margin: 0 6px 3px 0;
 }
+
+/* Logotipo de la cabecera un 25 % mayor (1.2rem -> 1.5rem). El relleno baja de 0.4rem a
+   0.25rem para que la cabecera conserve su altura. */
+.md-header__button.md-logo {
+  padding: 0.25rem;
+}
+
+.md-header__button.md-logo img,
+.md-header__button.md-logo svg {
+  height: 1.5rem;
+}

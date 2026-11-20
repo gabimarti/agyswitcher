@@ -14,6 +14,7 @@ Todos los cambios relevantes de AgySwitcher se documentan en este fichero.
 
 - La web se construye con Zensical (aspecto clásico) en lugar de MkDocs Material, con la
   misma configuración y las mismas direcciones.
+- Logotipo de la cabecera de la web un 25 % más grande, sin cambiar la altura de la cabecera.
 
 ## [1.2.0] - 2026-11-19
 
