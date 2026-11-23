@@ -14,8 +14,8 @@ Todas las órdenes muestran su ayuda con `--help` (por ejemplo, `agyswitcher add
 | [`set-active`](#set-active) | Cambiar a otra cuenta (cambio guiado) |
 | [`rotate`](#rotate) | Cambiar de pool o a la siguiente cuenta con cuota |
 | [`sync`](#sync) | Alinear la cuenta activa con la sesión real de `agy` |
-| [`run`](#run) | Ejecutar `agy` con detección de cuota |
-| [`watch`](#watch) | Vigilar los registros de `agy` |
+| [`run`](#run) | **Flujo principal:** ejecutar `agy` con supervisión y detección de cuota |
+| [`watch`](#watch) | *Modo avanzado:* vigilar registros de `agy` en segundo plano (para IDEs) |
 | [`models`](#models) | Modelos disponibles y preferidos |
 | [`init`](#init) | Preparar un proyecto para continuar entre cuentas y agentes |
 | [`handoff`](#handoff) | Instrucciones para guardar y retomar el trabajo |
@@ -138,31 +138,53 @@ activa no tenía email, le asigna el detectado.
 
 ## run
 
-Ejecuta `agy` y, mientras está abierto, vigila su salida y sus registros para detectar la
-cuota agotada y anotarla (en modo interactivo `agy` muestra el aviso en pantalla, pero solo lo
-deja por escrito en sus registros). Antes de lanzar avisa si la cuota es baja. Todo lo que va después de `--` se pasa a `agy`. Si tienes
-un modelo preferido para el pool activo (ver [`models`](#models)), se añade `--model`
-automáticamente salvo que indiques otro.
+Es el **flujo de trabajo principal y recomendado** para programar con `agy` en el día a día.
+En lugar de abrir `agy` directamente por tu cuenta, lanzarlo a través de `agyswitcher run`
+ofrece las siguientes ventajas integradas:
 
-Si durante la ejecución se agota la cuota, muestra un aviso en ese momento y, al salir de
-`agy`, te indica cómo continuar, igual que [`watch`](#watch):
-
-- si la cuenta tiene libre el otro pool, cambia de pool (vuelve a lanzar `agyswitcher run`);
-- si no, **propone** la siguiente cuenta con cuota y el comando para cambiar, y te recuerda
-  guardar el estado (`handoff save`). No cambia de cuenta por sí mismo;
-- si todas figuran agotadas, te sugiere qué cuenta comprobar primero, como
-  [`rotate`](#rotate).
-
-Si lo que se agota es el pool que no estás usando, no propone ningún cambio.
+1. **Revisión de frescura al arrancar:** antes de iniciar `agy`, comprueba si la cuota guardada
+   tiene más de 3 minutos (o no existe) y la consulta en vivo de forma segura. Si está por
+   debajo del umbral (20 % por defecto), te avisa antes de que te sumerjas en la sesión para
+   que guardes el estado a tiempo.
+2. **Inyección automática de modelo preferido:** si configuraste un modelo preferido para el
+   pool activo (ver [`models`](#models)), `run` añade automáticamente `--model <id>` sin que
+   tengas que escribirlo cada vez (salvo que indiques otro explícitamente).
+3. **Supervisión pasiva en tiempo real:** mientras `agy` está abierto en modo interactivo,
+   sigue sus registros de error (`cli.log`) en segundo plano sin ralentizar la consola ni
+   lanzar procesos concurrentes.
+4. **Propuesta y guía al agotarse la cuota:** si durante la sesión se agota la cuota del pool
+   en uso, emite un aviso visual/sonoro inmediato y, al salir de `agy` (`/exit`), te indica cómo
+   continuar:
+   - si la misma cuenta tiene libre el otro pool, rota de pool automáticamente (solo tienes
+     que volver a ejecutar `agyswitcher run`);
+   - si no, propone la siguiente cuenta con cuota, indica el comando para cambiar (`set-active`)
+     y te recuerda guardar el estado (`handoff save`);
+   - si todas figuran agotadas, sugiere cuál comprobar primero, como en [`rotate`](#rotate).
+5. **Paso transparente de argumentos:** todo lo que indiques después de `--` se envía directamente
+   a `agy`.
 
 ```powershell
-agyswitcher run -- --help
-agyswitcher run -- --model claude-sonnet-4-6 -p "Hola"
+agyswitcher run                                     # Sesión interactiva normal (flujo principal recomendado)
+agyswitcher run -- --continue                       # Retomar la conversación más reciente de agy
+agyswitcher run -- -p "Analiza los errores en tests" # Consulta puntual directa sin abrir TUI
+agyswitcher run -- --model claude-sonnet-4-6        # Forzar un modelo específico para esta sesión
+agyswitcher run -- --help                           # Ver las opciones nativas de agy
 ```
 
 ## watch
 
-Vigila los registros de `agy` (por defecto `%USERPROFILE%\.gemini\antigravity-cli\cli.log`).
+Es un **modo observador avanzado**. Vigila los registros de `agy` (por defecto
+`%USERPROFILE%\.gemini\antigravity-cli\cli.log`) en segundo plano.
+
+**¿Cuándo se usa?**
+
+- Únicamente si prefieres **no** lanzar `agy` desde AgySwitcher, por ejemplo porque abres `agy`
+  directamente en el terminal integrado de Visual Studio Code, Cursor u otro IDE.
+- En ese escenario, abres una segunda consola independiente y dejas `agyswitcher watch`
+  ejecutándose en paralelo para que supervise la cuota mientras programas en el IDE.
+- **Nota:** Si utilizas `agyswitcher run`, **no necesitas `watch`**, ya que `run` incluye
+  esta misma supervisión internamente en segundo plano.
+
 Al detectar cuota agotada la anota y:
 
 - si la cuenta tiene libre el otro pool, cambia de pool;

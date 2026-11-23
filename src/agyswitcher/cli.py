@@ -2059,8 +2059,8 @@ def _propose_after_exhaustion(accounts: dict[str, Account], state: AppState) -> 
 
 @app.command(
     help=(
-        "Supervisa los logs de agy; al detectar cuota agotada cambia de pool o propone la "
-        "siguiente cuenta. Ejemplo: agyswitcher watch"
+        "Modo avanzado (segunda terminal): supervisa los registros de agy cuando se ejecuta "
+        "fuera de AgySwitcher o desde un IDE. Ejemplo: agyswitcher watch"
     ),
 )
 def watch(
@@ -2344,8 +2344,8 @@ _LOG_POLL_INTERVAL = 1.0
 
 @app.command(
     help=(
-        "Ejecuta agy detectando la cuota agotada (y proponiendo cómo continuar) y avisando de "
-        "cuota baja. Ejemplo: agyswitcher run -- --help"
+        "Flujo principal: ejecuta agy con comprobación de cuota baja, inyección de modelo preferido "
+        "y detección en tiempo real. Ejemplo: agyswitcher run / agyswitcher run -- --continue"
     ),
 )
 def run(

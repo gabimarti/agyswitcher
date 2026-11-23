@@ -81,16 +81,16 @@ cuenta tiene **dos cuotas independientes** (pools): *Gemini* (modelos Gemini) y 
 (modelos como Claude o GPT-OSS dentro de `agy`). Si una se agota, la otra puede seguir
 disponible en la misma cuenta.
 
-### 2. Mientras trabajas: lanza `agy` a través de AgySwitcher
+### 2. Mientras trabajas: lanza `agy` a través de AgySwitcher (flujo principal)
 
 ```powershell
 cd C:\Proyectos\MiPractica
 agyswitcher run
 ```
 
-Es igual que ejecutar `agy`, pero AgySwitcher lee su salida: avisa antes de empezar si la
-cuota es baja y, si se agota durante la sesión, te dice cómo continuar al salir. Si prefieres
-abrir `agy` directamente (o desde el IDE), deja en otra ventana:
+Es la forma habitual y recomendada: ejecuta `agy` con tu modelo preferido inyectado, comprueba que la cuota esté fresca al arrancar (avisando si baja del 20 %) y, si la cuota se agota durante la sesión, te indica cómo continuar al salir.
+
+Si prefieres abrir `agy` directamente por tu cuenta (por ejemplo, desde la terminal integrada de VS Code o Cursor), abre una segunda ventana y deja en segundo plano el modo observador avanzado:
 
 ```powershell
 agyswitcher watch

@@ -17,6 +17,12 @@ Todos los cambios relevantes de AgySwitcher se documentan en este fichero.
 
 ### Cambiado
 
+- Clarificación de la experiencia de usuario en comandos y documentación: `agyswitcher run`
+  se documenta de forma explícita como el flujo de trabajo principal recomendado para programar
+  con `agy` (con ejemplos de sesión normal, continuación `--continue`, prompt directo `-p` y
+  modelo forzado), mientras que `agyswitcher watch` se clarifica como modo observador avanzado para
+  terminales integradas en IDEs. La página principal del manual muestra de forma visible la versión
+  de la release.
 - El umbral por defecto de aviso de cuota baja pasa del 15 % al 20 %, proporcionando mayor margen
   para guardar el estado antes del corte de cuota.
 - La copia automática de instrucciones al portapapeles (`auto-copy`) queda desactivada por defecto
