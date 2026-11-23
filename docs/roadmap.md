@@ -96,6 +96,7 @@ flowchart LR
 
 | Versión | Fecha | Lo principal |
 | :--- | :--- | :--- |
+| **1.4.0** | 2026-11-23 | Frescura de cuota en `run`, persistencia en `HANDOFF.md`, umbral 20 %, detección interactiva y UX `run` vs `watch`. |
 | **1.3.0** | 2026-11-20 | Comando `doctor`, guías «Uso en el día a día» y «Varios agentes y proveedores», web con Zensical. |
 | **1.2.0** | 2026-11-19 | Umbral de cuota baja configurable y portapapeles, cuota restablecida antes de tiempo, logotipo, revisión de seguridad y compilación reproducible. |
 | **1.1.0** | 2026-11-19 | `run` propone cómo continuar al agotarse la cuota; consultas a `agy` con tiempo máximo (`add` ya no bloquea la consola). |

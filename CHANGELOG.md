@@ -2,7 +2,11 @@
 
 Todos los cambios relevantes de AgySwitcher se documentan en este fichero.
 
-## [Sin publicar]
+## [1.4.0] - 2026-11-23
+
+Comprobación automática de frescura de cuota al arrancar `run`, persistencia de traspaso
+en `HANDOFF.md`, umbral de cuota baja al 20 %, detección de cuota agotada en modo interactivo
+y clarificación del flujo principal de uso (`run` vs `watch`).
 
 ### Añadido
 
