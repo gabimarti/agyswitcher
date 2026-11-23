@@ -2,7 +2,7 @@
 
 *Switch accounts. Keep coding.*
 
-> **Versión:** 1.4.1 · [Registro de cambios](https://github.com/gabimarti/agyswitcher/blob/main/CHANGELOG.md)
+> **Versión:** 1.5.0 · [Registro de cambios](https://github.com/gabimarti/agyswitcher/blob/main/CHANGELOG.md)
 
 AgySwitcher te ayuda a trabajar con **varias cuentas de Google en Antigravity CLI (`agy`)**:
 sabe cuánta cuota le queda a cada una, te avisa antes de que se agote, te indica la

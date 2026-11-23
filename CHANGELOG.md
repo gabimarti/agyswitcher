@@ -2,7 +2,12 @@
 
 Todos los cambios relevantes de AgySwitcher se documentan en este fichero.
 
-## [Sin publicar]
+## [1.5.0] - 2026-11-23
+
+Conmutación instantánea de cuentas mediante slots en Windows Credential Manager
+(DPAPI) en `set-active` y `rotate`, preservación de tokens ante Refresh Token
+Rotation (RTR), enlace automático en `sync`/post-login, distintivo `[slot]`
+en `list` y `status`, y limpieza de slots en `remove`.
 
 ### Añadido
 

@@ -17,7 +17,7 @@ No necesitas Python ni el código fuente, ni permisos de administrador.
    `SHA256SUMS.txt`, publicado en la misma página.
 
    ```powershell
-   Get-FileHash .\AgySwitcher-1.4.1-setup.exe -Algorithm SHA256
+   Get-FileHash .\AgySwitcher-1.5.0-setup.exe -Algorithm SHA256
    ```
 
 3. Ejecuta el instalador. Como el ejecutable aún no está firmado digitalmente, Windows
