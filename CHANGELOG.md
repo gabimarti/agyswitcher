@@ -2,6 +2,23 @@
 
 Todos los cambios relevantes de AgySwitcher se documentan en este fichero.
 
+## [Sin publicar]
+
+### Añadido
+
+- Conmutación instantánea de cuentas mediante slots en Windows Credential Manager
+  (`gemini:antigravity:slot:<alias>`) en `set-active` y `rotate`, manteniendo los tokens
+  OAuth exclusivamente dentro del almacén seguro nativo del sistema operativo (DPAPI)
+  sin escribir secretos en disco.
+- Preservación automática de tokens activos recientes (Refresh Token Rotation) sincronizando
+  la sesión saliente en su slot antes de promover la nueva cuenta.
+- Captura y vinculación automática de slots en `sync`, `add` y tras un login web verificado en agy.
+- Distintivo visual `[slot]` en `list` y fila informativa en `status` para identificar qué cuentas
+  disponen de sesión guardada para cambio instantáneo.
+- Limpieza automática del slot de sesión en Windows Credential Manager al eliminar una cuenta con `remove`.
+- Fallback automático y transparente al cambio guiado por navegador si una cuenta no dispone de slot
+  o se produce un error en la API de credenciales.
+
 ## [1.4.1] - 2026-11-23
 
 ### Corregido

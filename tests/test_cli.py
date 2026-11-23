@@ -1023,6 +1023,75 @@ def test_remove_active_account_leaves_no_active_and_suggests_sync() -> None:
     assert state.active is None
 
 
+def test_remove_account_deletes_slot_when_exists(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Si la cuenta tiene slot en Credential Manager, remove lo elimina e informa al usuario."""
+    runner.invoke(app, ["add", "cuenta-1", "--email", "uno@example.com"])
+
+    deleted_slots: list[str] = []
+
+    def fake_delete_slot(alias: str) -> bool:
+        deleted_slots.append(alias)
+        return True
+
+    monkeypatch.setattr("agyswitcher.cli.delete_slot", fake_delete_slot)
+
+    result = runner.invoke(app, ["remove", "cuenta-1", "--force"])
+    assert result.exit_code == 0
+    assert "Cuenta 'cuenta-1' eliminada correctamente." in result.output
+    assert "Slot de sesión eliminado de Windows Credential Manager." in result.output
+    assert deleted_slots == ["cuenta-1"]
+    assert "cuenta-1" not in load_accounts()
+
+
+def test_remove_account_when_no_slot_exists(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Si la cuenta no tiene slot en Credential Manager, se elimina sin mostrar mensaje de slot."""
+    runner.invoke(app, ["add", "cuenta-1", "--email", "uno@example.com"])
+    monkeypatch.setattr("agyswitcher.cli.delete_slot", lambda alias: False)
+
+    result = runner.invoke(app, ["remove", "cuenta-1", "--force"])
+    assert result.exit_code == 0
+    assert "Cuenta 'cuenta-1' eliminada correctamente." in result.output
+    assert "Slot de sesión eliminado" not in result.output
+    assert "cuenta-1" not in load_accounts()
+
+
+def test_remove_account_tolerates_credman_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Si delete_slot eleva CredManError, remove no se bloquea y elimina la cuenta."""
+    from agyswitcher.credman import CredManError
+
+    runner.invoke(app, ["add", "cuenta-1", "--email", "uno@example.com"])
+
+    def fake_delete_error(alias: str) -> bool:
+        raise CredManError("Fallo simulado de Win32 CredDelete")
+
+    monkeypatch.setattr("agyswitcher.cli.delete_slot", fake_delete_error)
+
+    result = runner.invoke(app, ["remove", "cuenta-1", "--force"])
+    assert result.exit_code == 0
+    assert "Cuenta 'cuenta-1' eliminada correctamente." in result.output
+    assert "cuenta-1" not in load_accounts()
+
+
+def test_remove_account_cleans_accounts_quota() -> None:
+    """remove elimina también la entrada de accounts_quota en state.json."""
+    from agyswitcher.models import AccountQuotaInfo
+    from agyswitcher.state import save_state
+
+    runner.invoke(app, ["add", "cuenta-1", "--email", "uno@example.com"])
+    state = load_state()
+    state.accounts_quota["cuenta-1"] = AccountQuotaInfo(
+        gemini_percent=50,
+        external_percent=70,
+    )
+    save_state(state)
+
+    result = runner.invoke(app, ["remove", "cuenta-1", "--force"])
+    assert result.exit_code == 0
+
+    reloaded_state = load_state()
+    assert "cuenta-1" not in reloaded_state.accounts_quota
+
+
 def test_set_active_command(monkeypatch: pytest.MonkeyPatch) -> None:
     _login_ok(monkeypatch)
     runner.invoke(app, ["add", "cuenta-1", "--email", "uno@example.com"])
@@ -2283,3 +2352,223 @@ def test_run_concurrent_detection_safety() -> None:
     assert result.exit_code == 0 or "Durante la ejecución" in result.output
     state = load_state()
     assert "cuenta-1" in state.gemini_quota_exhausted
+
+
+# ---------------------------------------------------------------------------
+# Tests Fase A3: Slots de Credential Manager en sync, add, list y status
+# ---------------------------------------------------------------------------
+
+
+def test_sync_saves_slot_when_credman_available(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """sync guarda automáticamente el slot de sesión cuando la cuenta coincide con el email."""
+    runner.invoke(app, ["add", "cuenta-1", "--email", "alpha@example.com"])
+    runner.invoke(app, ["add", "cuenta-2", "--email", "beta@example.com"])
+    runner.invoke(app, ["set-active", "cuenta-1"])
+
+    saved_calls: list[tuple[str, str | None]] = []
+
+    def _mock_save_slot(alias: str, expected_email: str | None = None) -> str:
+        saved_calls.append((alias, expected_email))
+        return expected_email or "beta@example.com"
+
+    monkeypatch.setattr("agyswitcher.cli.detect_active_email", lambda: "beta@example.com")
+    monkeypatch.setattr("agyswitcher.cli.save_slot_from_active", _mock_save_slot)
+
+    result = runner.invoke(app, ["sync"])
+    assert result.exit_code == 0
+    assert "Slot de sesión guardado para conmutación instantánea." in result.output
+    assert len(saved_calls) == 1
+    assert saved_calls[0] == ("cuenta-2", "beta@example.com")
+
+
+def test_sync_links_email_and_saves_slot(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """sync vincula el email a la cuenta activa huérfana y guarda su slot en CredMan."""
+    runner.invoke(app, ["add", "cuenta-huerfana"])
+    assert load_state().active == "cuenta-huerfana"
+
+    saved_calls: list[tuple[str, str | None]] = []
+
+    def _mock_save_slot(alias: str, expected_email: str | None = None) -> str:
+        saved_calls.append((alias, expected_email))
+        return expected_email or "huerfana@example.com"
+
+    monkeypatch.setattr("agyswitcher.cli.detect_active_email", lambda: "huerfana@example.com")
+    monkeypatch.setattr("agyswitcher.cli.save_slot_from_active", _mock_save_slot)
+
+    result = runner.invoke(app, ["sync"])
+    assert result.exit_code == 0
+    assert "Vinculado el email 'huerfana@example.com'" in result.output
+    assert "Slot de sesión guardado para conmutación instantánea." in result.output
+    assert len(saved_calls) == 1
+    assert saved_calls[0] == ("cuenta-huerfana", "huerfana@example.com")
+
+
+def test_add_saves_slot_when_session_matches(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """add guarda el slot de la cuenta nueva si se activa y su email coincide con agy."""
+    saved_calls: list[tuple[str, str | None]] = []
+
+    def _mock_save_slot(alias: str, expected_email: str | None = None) -> str:
+        saved_calls.append((alias, expected_email))
+        return expected_email or "nueva@example.com"
+
+    monkeypatch.setattr("agyswitcher.cli.detect_active_email", lambda: "nueva@example.com")
+    monkeypatch.setattr("agyswitcher.cli.save_slot_from_active", _mock_save_slot)
+
+    result = runner.invoke(app, ["add", "cuenta-nueva", "--email", "nueva@example.com"])
+    assert result.exit_code == 0
+    assert "Slot de sesión guardado para conmutación instantánea." in result.output
+    assert len(saved_calls) == 1
+    assert saved_calls[0] == ("cuenta-nueva", "nueva@example.com")
+
+
+def test_list_shows_slot_tag_and_legend(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """list muestra el tag [slot] en las cuentas con credencial guardada y la leyenda."""
+    runner.invoke(app, ["add", "cuenta-con-slot", "--email", "con@example.com"])
+    runner.invoke(app, ["add", "cuenta-sin-slot", "--email", "sin@example.com"])
+
+    monkeypatch.setattr("agyswitcher.cli.list_slot_aliases", lambda: ["cuenta-con-slot"])
+
+    result = runner.invoke(app, ["list", "--cached"], env={"COLUMNS": "120"})
+    assert result.exit_code == 0
+    output = result.output
+
+    assert "cuenta-con-slot [slot]" in output
+    assert "cuenta-sin-slot [slot]" not in output
+    assert "cuenta-sin-slot" in output
+    assert "[slot] Sesión guardada en Windows Credential Manager" in output
+
+
+def test_status_shows_slot_credman_row(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """status incluye la fila 'Slot CredMan:' reflejando si la cuenta activa tiene slot."""
+    runner.invoke(app, ["add", "mi-cuenta", "--email", "test@example.com"])
+
+    # Con slot
+    monkeypatch.setattr("agyswitcher.cli.list_slot_aliases", lambda: ["mi-cuenta"])
+    res1 = runner.invoke(app, ["status"])
+    assert res1.exit_code == 0
+    assert "Slot CredMan:" in res1.output
+    assert "guardado (conmutación instantánea)" in res1.output
+
+    # Sin slot
+    monkeypatch.setattr("agyswitcher.cli.list_slot_aliases", lambda: [])
+    res2 = runner.invoke(app, ["status"])
+    assert res2.exit_code == 0
+    assert "Slot CredMan:" in res2.output
+    assert "no guardado (requiere login web)" in res2.output
+
+
+def test_set_active_instant_switch_when_slot_exists(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """set-active realiza conmutación instantánea si la cuenta destino tiene slot CredMan."""
+    _two_accounts()
+    promoted: list[tuple[str, str | None, str | None]] = []
+
+    def _mock_promote(
+        alias: str,
+        expected_email: str | None = None,
+        sync_outgoing_alias: str | None = None,
+    ) -> str:
+        promoted.append((alias, expected_email, sync_outgoing_alias))
+        return expected_email or "dos@example.com"
+
+    monkeypatch.setattr("agyswitcher.cli.has_slot", lambda a: a == "cuenta-2")
+    monkeypatch.setattr("agyswitcher.cli.promote_slot_to_active", _mock_promote)
+    monkeypatch.setattr("agyswitcher.cli.find_running_agy_processes", lambda: [])
+
+    result = runner.invoke(app, ["set-active", "cuenta-2"])
+    assert result.exit_code == 0
+    assert "Conmutación instantánea a 'cuenta-2' realizada con éxito." in result.output
+    assert "Cuenta activa establecida en 'cuenta-2' (dos@example.com)." in result.output
+    assert load_state().active == "cuenta-2"
+    assert len(promoted) == 1
+    assert promoted[0] == ("cuenta-2", "dos@example.com", "cuenta-1")
+
+
+def test_set_active_fallback_when_slot_promotion_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Si la promoción de slot falla con CredManError, set-active recurre al cambio guiado."""
+    _two_accounts()
+    _login_ok(monkeypatch)
+
+    def _failing_promote(
+        alias: str,
+        expected_email: str | None = None,
+        sync_outgoing_alias: str | None = None,
+    ) -> str:
+        from agyswitcher.credman import CredManError
+
+        raise CredManError("Fallo simulado de Win32 CredWrite")
+
+    monkeypatch.setattr("agyswitcher.cli.has_slot", lambda a: a == "cuenta-2")
+    monkeypatch.setattr("agyswitcher.cli.promote_slot_to_active", _failing_promote)
+
+    result = runner.invoke(app, ["set-active", "cuenta-2"])
+    assert result.exit_code == 0
+    assert "Conmutación instantánea no disponible" in result.output
+    assert "Iniciando cambio guiado como alternativa..." in result.output
+    assert "Cambio a 'cuenta-2'" in result.output
+    assert load_state().active == "cuenta-2"
+
+
+def test_rotate_instant_switch_when_slot_exists(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """rotate conmuta instantáneamente sin esperar login web cuando la cuenta destino tiene slot."""
+    _two_accounts()
+    state = load_state()
+    state.gemini_quota_exhausted["cuenta-1"] = _recent_iso()
+    state.external_quota_exhausted["cuenta-1"] = _recent_iso()
+    save_state(state)
+
+    promoted: list[tuple[str, str | None, str | None]] = []
+
+    def _mock_promote(
+        alias: str,
+        expected_email: str | None = None,
+        sync_outgoing_alias: str | None = None,
+    ) -> str:
+        promoted.append((alias, expected_email, sync_outgoing_alias))
+        return expected_email or "dos@example.com"
+
+    monkeypatch.setattr("agyswitcher.cli.has_slot", lambda a: a == "cuenta-2")
+    monkeypatch.setattr("agyswitcher.cli.promote_slot_to_active", _mock_promote)
+    monkeypatch.setattr("agyswitcher.cli.find_running_agy_processes", lambda: [])
+
+    result = runner.invoke(app, ["rotate"])
+    assert result.exit_code == 0
+    assert "Conmutación instantánea a 'cuenta-2' realizada con éxito." in result.output
+    assert load_state().active == "cuenta-2"
+    assert len(promoted) == 1
+    assert promoted[0] == ("cuenta-2", "dos@example.com", "cuenta-1")
+
+
+def test_switch_account_warns_when_agy_processes_running(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """_switch_account muestra advertencia si hay sesiones de agy abiertas."""
+    _two_accounts()
+    monkeypatch.setattr("agyswitcher.cli.has_slot", lambda a: a == "cuenta-2")
+    monkeypatch.setattr(
+        "agyswitcher.cli.promote_slot_to_active", lambda **kwargs: "dos@example.com"
+    )
+    monkeypatch.setattr(
+        "agyswitcher.cli.find_running_agy_processes",
+        lambda: ["agy.exe (PID 1234)"],
+    )
+
+    result = runner.invoke(app, ["set-active", "cuenta-2"])
+    assert result.exit_code == 0
+    assert "Aviso: Hay sesiones de agy abiertas (agy.exe (PID 1234))" in result.output
+    assert "sesiones nuevas o al reiniciarlas" in result.output

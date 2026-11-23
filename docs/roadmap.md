@@ -48,8 +48,11 @@ flowchart LR
 - Dos cuotas semanales independientes por cuenta (pools *Gemini* y *Otros*), con porcentaje
   restante y fecha de reinicio (`list`, `usage`, `dashboard`).
 - Detección de cuota agotada en la salida de `agy` (`run`) y en sus registros (`watch`).
-- **Cambio de cuenta guiado y verificado** (`set-active`, `rotate`): AgySwitcher indica con
-  qué email iniciar sesión y lo comprueba en los registros de `agy`. Si el pool en uso se
+- **Conmutación instantánea y cambio guiado** (`set-active`, `rotate`): AgySwitcher gestiona
+  slots de sesión en Windows Credential Manager (`gemini:antigravity:slot:<alias>`) permitiendo
+  conmutar cuentas al instante sin abrir el navegador y protegiendo rotaciones recientes de tokens;
+  si una cuenta no tiene slot o la sesión ha caducado, recurre automáticamente al cambio guiado
+  y verificado en navegador. `remove` limpia de forma segura el slot asociado. Si el pool en uso se
   agota y el otro está libre, cambia de pool sin iniciar sesión.
 - Propuesta de la siguiente cuenta con cuota; si todas figuran agotadas según los datos
   guardados, sugiere cuál comprobar primero (la cuota a veces se restablece antes de tiempo).

@@ -46,7 +46,8 @@ de cuenta.
 
 ## remove
 
-Elimina una cuenta y su información de cuota. Pide confirmación salvo con `--force` (`-f`).
+Elimina una cuenta, su información de cuota y su slot de sesión en Windows Credential Manager
+(si disponía de uno). Pide confirmación salvo con `--force` (`-f`).
 Si era la cuenta activa, no queda ninguna activa: ejecuta [`sync`](#sync) o
 [`set-active`](#set-active).
 

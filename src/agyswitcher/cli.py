@@ -47,6 +47,14 @@ from agyswitcher.config import (
     save_accounts,
     save_settings,
 )
+from agyswitcher.credman import (
+    CredManError,
+    delete_slot,
+    has_slot,
+    list_slot_aliases,
+    promote_slot_to_active,
+    save_slot_from_active,
+)
 from agyswitcher.dashboard import build_dashboard_view
 from agyswitcher.doctor import CheckStatus, DoctorOptions, run_doctor, worst_status
 from agyswitcher.models import Account, AccountQuotaInfo, AppState, is_valid_email
@@ -412,6 +420,8 @@ def _guided_account_switch(
     result = wait_for_login(target_email, offsets, timeout=timeout, on_other_login=_on_other_login)
 
     if result.status is LoginWaitStatus.VERIFIED:
+        with contextlib.suppress(CredManError):
+            save_slot_from_active(target_alias, expected_email=target_email)
         try:
             return record_rotation(target_alias, target_pool, state)
         except StateError as err:
@@ -435,6 +445,65 @@ def _guided_account_switch(
         )
     typer.secho(keep_msg, fg=typer.colors.YELLOW)
     raise typer.Exit(code=1)
+
+
+def _switch_account(
+    target_alias: str,
+    target_pool: str,
+    accounts: dict[str, Account],
+    state: AppState,
+    timeout: float,
+) -> str:
+    """Cambia de cuenta con conmutación instantánea si tiene slot CredMan, o guiada si no.
+
+    Si existe un slot CredMan para target_alias, promueve la credencial a la sesión activa
+    en Windows Credential Manager sincronizando la saliente si es necesario.
+    Si falla la promoción o no existe el slot, recurre a _guided_account_switch.
+
+    Returns:
+        Mensaje del cambio registrado.
+    """
+    if has_slot(target_alias):
+        target_acc = accounts.get(target_alias)
+        target_email = target_acc.email if target_acc else None
+        outgoing_alias = state.active if (state.active and state.active in accounts) else None
+        try:
+            active_email = promote_slot_to_active(
+                alias=target_alias,
+                expected_email=target_email,
+                sync_outgoing_alias=outgoing_alias,
+            )
+            if target_acc and not target_acc.email and active_email:
+                target_acc.email = active_email
+                with contextlib.suppress(ConfigError):
+                    save_accounts(accounts)
+            try:
+                msg = record_rotation(target_alias, target_pool, state)
+            except StateError as err:
+                typer.secho(
+                    f"Credencial conmutada, pero no se pudo guardar el estado: {err}. "
+                    "Ejecuta 'agyswitcher sync' para corregirlo.",
+                    fg=typer.colors.YELLOW,
+                )
+                raise typer.Exit(code=1) from err
+
+            console.print(
+                f"[bold green]✓ Conmutación instantánea a '[/bold green][bold]{target_alias}[/bold][bold green]' realizada con éxito.[/bold green] [dim]({active_email})[/dim]"
+            )
+            running = find_running_agy_processes()
+            if running:
+                console.print(
+                    f"[yellow]Aviso: Hay sesiones de agy abiertas ({', '.join(running)}). "
+                    "El cambio tendrá efecto en sesiones nuevas o al reiniciarlas.[/yellow]"
+                )
+            return msg
+        except CredManError as err:
+            console.print(
+                f"[yellow][!] Conmutación instantánea no disponible ({err}). "
+                "Iniciando cambio guiado como alternativa...[/yellow]"
+            )
+
+    return _guided_account_switch(target_alias, target_pool, accounts, state, timeout)
 
 
 @app.command(
@@ -560,6 +629,10 @@ def add(
             f"Cuenta '{clean_alias}'{email_suffix} registrada y establecida como cuenta activa.",
             fg=typer.colors.GREEN,
         )
+        if target_email and session_matches:
+            with contextlib.suppress(CredManError):
+                save_slot_from_active(clean_alias, expected_email=target_email)
+                console.print("[dim]✓ Slot de sesión guardado para conmutación instantánea.[/dim]")
 
         # Cuota solo si agy tiene la sesión de esta cuenta (si no, sería la de otra cuenta).
         try:
@@ -586,7 +659,7 @@ def add(
 
 @app.command(
     name="remove",
-    help="Elimina una cuenta registrada en AgySwitcher. Ejemplo: agyswitcher remove trabajo",
+    help="Elimina una cuenta registrada en AgySwitcher y su slot de sesión. Ejemplo: agyswitcher remove trabajo",
 )
 def remove_account(
     alias: Annotated[str, typer.Argument(help="Alias de la cuenta a eliminar.")],
@@ -636,6 +709,11 @@ def remove_account(
 
     state.gemini_quota_exhausted.pop(clean_alias, None)
     state.external_quota_exhausted.pop(clean_alias, None)
+    state.accounts_quota.pop(clean_alias, None)
+
+    slot_deleted = False
+    with contextlib.suppress(CredManError):
+        slot_deleted = delete_slot(clean_alias)
 
     if state.active == clean_alias:
         # La cuenta activa es la de la sesión de agy: no se puede elegir otra sin iniciar sesión.
@@ -663,13 +741,15 @@ def remove_account(
             raise typer.Exit(code=1) from err
 
     typer.secho(f"Cuenta '{clean_alias}' eliminada correctamente.", fg=typer.colors.GREEN)
+    if slot_deleted:
+        console.print("[dim]✓ Slot de sesión eliminado de Windows Credential Manager.[/dim]")
 
 
 @app.command(
     name="set-active",
     help=(
-        "Cambia a otra cuenta con el cambio guiado: indica con qué email iniciar sesión en agy y "
-        "lo verifica. Ejemplo: agyswitcher set-active trabajo"
+        "Cambia a otra cuenta con conmutación instantánea (CredMan) o cambio guiado en navegador: "
+        "indica con qué email iniciar sesión en agy si no hay slot previo. Ejemplo: agyswitcher set-active trabajo"
     ),
 )
 def set_active(
@@ -703,7 +783,7 @@ def set_active(
 
     switched = clean_alias != state.active
     if switched:
-        _guided_account_switch(clean_alias, state.active_model_group, accounts, state, timeout)
+        _switch_account(clean_alias, state.active_model_group, accounts, state, timeout)
     else:
         try:
             save_state(state)
@@ -785,6 +865,10 @@ def sync_active_account() -> None:
         if report and report.pools:
             update_state_from_usage_report(state, target_alias, report)
 
+        with contextlib.suppress(CredManError):
+            save_slot_from_active(target_alias, expected_email=detected_email)
+            console.print("[dim]✓ Slot de sesión guardado para conmutación instantánea.[/dim]")
+
         if state.active == target_alias:
             save_state(state)
             console.print(
@@ -811,6 +895,9 @@ def sync_active_account() -> None:
             if report and report.pools:
                 update_state_from_usage_report(state, state.active, report)
                 save_state(state)
+            with contextlib.suppress(CredManError):
+                save_slot_from_active(state.active, expected_email=detected_email)
+                console.print("[dim]✓ Slot de sesión guardado para conmutación instantánea.[/dim]")
             console.print(
                 f"[green]✓ Vinculado el email '{detected_email}' a la cuenta activa actual '{state.active}'.[/green]"
             )
@@ -1353,6 +1440,9 @@ def list_accounts(
         # Cuentas con fecha de reinicio más cercana primero
         return (0, earliest, alias)
 
+    slot_aliases = set(list_slot_aliases())
+    has_any_slot = bool(slot_aliases)
+
     standby_aliases.sort(key=_sort_key)
 
     ordered_aliases = (
@@ -1362,13 +1452,17 @@ def list_accounts(
     for alias in ordered_aliases:
         acc = accounts[alias]
         is_active = alias == state.active
+        has_slot = alias in slot_aliases
+        slot_tag = " [dim cyan]\\[slot][/dim cyan]" if has_slot else ""
         gemini_exhausted = alias in state.gemini_quota_exhausted
         external_exhausted = alias in state.external_quota_exhausted
         info = state.accounts_quota.get(alias)
 
         email_str = acc.email if acc.email else "-"
 
-        account_cell = f"[bold green]* {alias}[/bold green]" if is_active else f"  {alias}"
+        account_cell = (
+            f"[bold green]* {alias}[/bold green]{slot_tag}" if is_active else f"  {alias}{slot_tag}"
+        )
 
         gemini_pct_str = _pct_str(gemini_exhausted, info.gemini_percent if info else None)
         ext_pct_str = _pct_str(external_exhausted, info.external_percent if info else None)
@@ -1396,6 +1490,10 @@ def list_accounts(
         )
 
     console.print(table)
+    if has_any_slot:
+        console.print(
+            "[dim]\\[slot] Sesión guardada en Windows Credential Manager para conmutación instantánea.[/dim]"
+        )
     _warn_low_quota(accounts, state)
 
     active_email_override = report.active_email if (report and report.active_email) else None
@@ -1498,6 +1596,14 @@ def status(
         else "[dim]no vinculado[/dim]"
     )
     grid.add_row("Email Google:", email_desc)
+    if active_alias:
+        slot_saved = active_alias in set(list_slot_aliases())
+        slot_desc = (
+            "[green]guardado (conmutación instantánea)[/green]"
+            if slot_saved
+            else "[yellow]no guardado (requiere login web)[/yellow]"
+        )
+        grid.add_row("Slot CredMan:", slot_desc)
     grid.add_row("Pool activo:", pool_desc)
     grid.add_row("Registrada el:", added_desc)
     grid.add_row("Total cuentas:", str(total_accounts))
@@ -1918,8 +2024,8 @@ def usage(
 
 @app.command(
     help=(
-        "Cambia al otro pool de la cuenta activa o, con el cambio guiado, a la siguiente cuenta "
-        "con cuota (o al alias indicado). Ejemplo: agyswitcher rotate / agyswitcher rotate trabajo"
+        "Rota a la siguiente cuenta o pool disponible (instantáneamente si tiene slot CredMan o de forma guiada). "
+        "Ejemplo: agyswitcher rotate / agyswitcher rotate trabajo"
     ),
 )
 def rotate(
@@ -1984,7 +2090,7 @@ def rotate(
             )
 
     if target_alias != state.active:
-        msg = _guided_account_switch(target_alias, target_pool, accounts, state, timeout)
+        msg = _switch_account(target_alias, target_pool, accounts, state, timeout)
         typer.secho(msg, fg=typer.colors.GREEN)
         _print_resume_hint()
         _refresh_quota_after_switch(target_alias, accounts, state)
