@@ -99,7 +99,8 @@ Panel de control en la terminal: resumen, cuentas con barras de cuota e historia
 
 ## set-active
 
-Cambia a otra cuenta con el **cambio guiado** (ver [Conceptos](conceptos.md#el-cambio-de-cuenta-guiado)).
+Cambia a otra cuenta con conmutación instantánea si dispone de slot o mediante el
+**cambio guiado** si no (ver [Conceptos](conceptos.md#cambio-de-cuenta-y-slots)).
 
 ```powershell
 agyswitcher set-active trabajo
@@ -110,9 +111,12 @@ agyswitcher set-active trabajo --timeout 600
 | :--- | :--- |
 | `--timeout <segundos>` | Tiempo máximo de espera del inicio de sesión (por defecto 300). |
 
-Pasos: te muestra el email; en `agy` ejecutas `/logout` e inicias sesión con él; AgySwitcher
-lo verifica, registra el cambio, consulta la cuota de la nueva cuenta y te muestra la
-instrucción para retomar el proyecto. Si es la cuenta que ya está activa, no pide nada.
+Si la cuenta destino dispone de slot guardado en Windows Credential Manager (`[slot]` en `list`),
+el cambio es inmediato. Si no tiene slot o la sesión caducó, se realiza el cambio guiado:
+te muestra el email; en `agy` ejecutas `/logout` e inicias sesión con él; AgySwitcher
+lo verifica, guarda su slot para futuros cambios instantáneos, registra el cambio, consulta
+la cuota de la nueva cuenta y te muestra la instrucción para retomar el proyecto. Si es la
+cuenta que ya está activa, no pide nada.
 
 ## rotate
 
@@ -120,7 +124,8 @@ Sin argumentos, elige automáticamente:
 
 1. Si al pool activo se le acabó la cuota y el otro pool de la misma cuenta está libre,
    cambia de pool (no requiere iniciar sesión).
-2. Si no, cambia a la siguiente cuenta con cuota mediante el cambio guiado.
+2. Si no, conmuta a la siguiente cuenta con cuota (instantáneamente si tiene slot CredMan o
+   mediante el cambio guiado si no).
 
 Si ninguna cuenta tiene cuota libre, elige una cuyo reinicio previsto ya haya pasado
 (avisando de que está sin confirmar). Si todas siguen agotadas según los datos guardados,

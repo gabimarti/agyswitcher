@@ -6,6 +6,12 @@ completos, así que puedes pegarla al [pedir ayuda](https://github.com/gabimarti
 
 ## Al cambiar de cuenta
 
+**«Conmutación instantánea no disponible» o pide inicio de sesión en navegador.**
+Ocurre cuando la cuenta aún no dispone de un slot guardado en Windows Credential Manager
+(por ejemplo, tras registrarla con `add --no-activate`), o si la sesión guardada fue invalidada
+o expiró en Google. Completa el inicio de sesión guiado en el navegador una vez: AgySwitcher
+guardará el slot automáticamente y los próximos cambios a esa cuenta serán instantáneos.
+
 **`set-active` sigue esperando y no termina.**
 AgySwitcher espera a que inicies sesión en `agy` con el email indicado. En una ventana de
 `agy` ejecuta `/logout` e inicia sesión en el navegador con **ese** email. Si necesitas más

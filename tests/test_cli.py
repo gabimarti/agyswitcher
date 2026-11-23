@@ -2572,3 +2572,105 @@ def test_switch_account_warns_when_agy_processes_running(
     assert result.exit_code == 0
     assert "Aviso: Hay sesiones de agy abiertas (agy.exe (PID 1234))" in result.output
     assert "sesiones nuevas o al reiniciarlas" in result.output
+
+
+def test_credman_slots_full_lifecycle_e2e(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Ciclo de vida E2E de slots CredMan: add/sync -> list -> status -> set-active -> rotate -> remove."""
+    from agyswitcher.credman import CredManError
+
+    credman_store: dict[str, str] = {"gemini:antigravity": "personal@example.com"}
+
+    def _fake_has_slot(alias: str) -> bool:
+        return f"gemini:antigravity:slot:{alias}" in credman_store
+
+    def _fake_list_slot_aliases() -> list[str]:
+        prefix = "gemini:antigravity:slot:"
+        return [t[len(prefix) :] for t in credman_store if t.startswith(prefix)]
+
+    def _fake_save_slot_from_active(alias: str, expected_email: str | None = None) -> None:
+        active_email = credman_store.get("gemini:antigravity")
+        if not active_email:
+            raise CredManError("Sin sesión activa")
+        credman_store[f"gemini:antigravity:slot:{alias}"] = active_email
+
+    def _fake_promote_slot_to_active(
+        alias: str,
+        expected_email: str | None = None,
+        sync_outgoing_alias: str | None = None,
+    ) -> str:
+        slot_target = f"gemini:antigravity:slot:{alias}"
+        if slot_target not in credman_store:
+            raise CredManError("Slot no encontrado")
+        if sync_outgoing_alias:
+            current_active = credman_store.get("gemini:antigravity")
+            if current_active:
+                credman_store[f"gemini:antigravity:slot:{sync_outgoing_alias}"] = current_active
+        new_active = credman_store[slot_target]
+        credman_store["gemini:antigravity"] = new_active
+        return new_active
+
+    def _fake_delete_slot(alias: str) -> bool:
+        return credman_store.pop(f"gemini:antigravity:slot:{alias}", None) is not None
+
+    monkeypatch.setattr("agyswitcher.cli.has_slot", _fake_has_slot)
+    monkeypatch.setattr("agyswitcher.cli.list_slot_aliases", _fake_list_slot_aliases)
+    monkeypatch.setattr("agyswitcher.cli.save_slot_from_active", _fake_save_slot_from_active)
+    monkeypatch.setattr("agyswitcher.cli.promote_slot_to_active", _fake_promote_slot_to_active)
+    monkeypatch.setattr("agyswitcher.cli.delete_slot", _fake_delete_slot)
+    monkeypatch.setattr("agyswitcher.cli.find_running_agy_processes", lambda: [])
+
+    # 1. Añadir 'personal' coincidente con sesión activa -> guarda slot
+    monkeypatch.setattr("agyswitcher.cli.detect_active_email", lambda: "personal@example.com")
+    res1 = runner.invoke(app, ["add", "personal", "--email", "personal@example.com"])
+    assert res1.exit_code == 0
+    assert "Slot de sesión guardado" in res1.output
+    assert _fake_has_slot("personal")
+
+    # 2. Añadir 'trabajo' como secundaria sin activar
+    res2 = runner.invoke(app, ["add", "trabajo", "--email", "trabajo@example.com", "--no-activate"])
+    assert res2.exit_code == 0
+    assert not _fake_has_slot("trabajo")
+
+    # 3. Sincronizar 'trabajo' cuando la sesión de agy cambia
+    credman_store["gemini:antigravity"] = "trabajo@example.com"
+    monkeypatch.setattr("agyswitcher.cli.detect_active_email", lambda: "trabajo@example.com")
+    res_sync = runner.invoke(app, ["sync"])
+    assert res_sync.exit_code == 0
+    assert "Slot de sesión guardado" in res_sync.output
+    assert _fake_has_slot("trabajo")
+
+    # 4. list muestra distintivo [slot]
+    res_list = runner.invoke(app, ["list", "--cached"])
+    assert res_list.exit_code == 0
+    assert "[slot]" in res_list.output
+
+    # 5. status muestra fila de slot CredMan guardado
+    res_status = runner.invoke(app, ["status"])
+    assert res_status.exit_code == 0
+    assert "guardado (conmutación instantánea)" in res_status.output
+
+    # 6. Conmutación instantánea a 'personal' vía set-active
+    res_switch = runner.invoke(app, ["set-active", "personal"])
+    assert res_switch.exit_code == 0
+    assert "Conmutación instantánea a 'personal' realizada con éxito." in res_switch.output
+    assert load_state().active == "personal"
+    assert credman_store["gemini:antigravity"] == "personal@example.com"
+
+    # 7. Conmutación instantánea a 'trabajo' vía rotate
+    st = load_state()
+    st.gemini_quota_exhausted["personal"] = _recent_iso()
+    st.external_quota_exhausted["personal"] = _recent_iso()
+    save_state(st)
+
+    res_rot = runner.invoke(app, ["rotate"])
+    assert res_rot.exit_code == 0
+    assert "Conmutación instantánea a 'trabajo' realizada con éxito." in res_rot.output
+    assert load_state().active == "trabajo"
+    assert credman_store["gemini:antigravity"] == "trabajo@example.com"
+
+    # 8. Eliminar 'personal' -> limpia su slot de CredMan
+    res_rem = runner.invoke(app, ["remove", "personal", "--force"])
+    assert res_rem.exit_code == 0
+    assert "Slot de sesión eliminado de Windows Credential Manager." in res_rem.output
+    assert not _fake_has_slot("personal")
+    assert _fake_has_slot("trabajo")

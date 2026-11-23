@@ -1,8 +1,8 @@
 # Arquitectura Técnica — AgySwitcher
 
-**Versión:** 0.1 (Borrador inicial — Fase 1)  
-**Fecha:** 2026-11-03  
-**Estado:** Documento de diseño, sin implementación de código aún.
+**Versión:** 1.5.0 (Conmutación por slots en Windows Credential Manager)  
+**Fecha:** 2026-11-23  
+**Estado:** Implementado (Fases A0-A6).
 
 ---
 
@@ -55,11 +55,13 @@ flowchart TB
 1. **`agy.exe`** lee su configuración, historial, conversaciones, MCP y *skills* de
    `%USERPROFILE%\.gemini\` (subcarpetas `antigravity-cli`, `antigravity`, `config`,
    `skills`...). El IDE de Antigravity comparte esa carpeta.
-2. **La sesión de Google no está en `%USERPROFILE%\.gemini`** (verificado el 2026-11-18).
-   `agy` guarda **una única sesión** en el Administrador de credenciales de Windows, en una
-   entrada de nombre fijo. La cuenta solo cambia cuando el usuario cierra sesión
-   (`/logout`) e inicia sesión con otra cuenta en el navegador. AgySwitcher no lee, copia
-   ni modifica esa entrada.
+2. **La sesión de Google reside en Windows Credential Manager** (verificado el 2026-11-18 y
+   2026-11-23). `agy` almacena su sesión activa en una credencial genérica de nombre fijo
+   `gemini:antigravity`.
+   Para alternar cuentas sin depender del navegador en cada rotación, AgySwitcher gestiona
+   *slots* de sesión en el almacén seguro nativo de Windows (DPAPI) bajo el espacio de nombres
+   `gemini:antigravity:slot:<alias>` (`credman.py`). Ningún token ni secreto se escribe jamás
+   en archivos locales ni registros de AgySwitcher.
 3. Al completar un inicio de sesión (y también al arrancar con la sesión guardada), `agy`
    escribe en sus logs `OAuth: authenticated successfully as <email>`. Es la señal usada
    para verificar un cambio de cuenta (§3.3).
@@ -72,25 +74,46 @@ flowchart TB
 Así, al cambiar de cuenta cuando la actual agota su cuota, se conservan historial,
 conversaciones, servidores MCP y *skills*, y se puede continuar el mismo proyecto.
 
-### 3.3 Ciclo de vida de un cambio de cuenta (cambio guiado)
+### 3.3 Ciclo de vida de un cambio de cuenta (conmutación por slots y fallback guiado)
 
-`rotate <alias>` / `set-active <alias>` cuando cambia la cuenta (`_guided_account_switch`
-en `cli.py`):
+`rotate <alias>` / `set-active <alias>` cuando cambia la cuenta (`_switch_account` en `cli.py`):
 
+```mermaid
+flowchart TD
+    START["Inicio de cambio de cuenta<br/>(set-active / rotate)"] --> CHECK{"¿La cuenta destino<br/>tiene slot CredMan?"}
+    CHECK -- "Sí" --> PROMOTE["Promoción de slot:<br/>1. Sincronizar saliente en su slot (RTR)<br/>2. Copiar slot destino a gemini:antigravity<br/>3. Validar email del blob"]
+    PROMOTE --> SUCCESS{"¿Promoción OK?"}
+    SUCCESS -- "Sí" --> INSTANT["✓ Conmutación instantánea<br/>Actualizar estado y cuota"]
+    SUCCESS -- "No (error)" --> WARN["Aviso: slot fallido.<br/>Derivar a cambio guiado"]
+    CHECK -- "No" --> GUIDED["Cambio guiado en navegador:<br/>_guided_account_switch"]
+    WARN --> GUIDED
+    GUIDED --> CAPTURE["Tras verificar login en logs:<br/>Guardar nuevo slot en CredMan"]
+    CAPTURE --> INSTANT
 ```
-1. La cuenta destino debe tener email registrado (si no, no hay forma de verificar)
-2. Aviso si hay procesos agy.exe / Antigravity*.exe: seguirán con la cuenta anterior
-   hasta que se reinicien (find_running_agy_processes)
-3. offsets = snapshot_log_offsets()     (marca de los logs actuales)
-4. Instrucciones: en agy, /logout e iniciar sesión con <email destino>
-5. wait_for_login(email, offsets, timeout)   (sondeo cada 2 s; avisa de otras cuentas)
-   - VERIFIED            -> record_rotation(): state.json + historial
-   - TIMEOUT / CANCELLED -> state.json intacto; si se detectó otra sesión, sugerir `sync`
-```
 
-La verificación (`session.py`) busca el evento de inicio de sesión **solo en el contenido
-escrito después de la marca** (`detect_new_login_email`): un inicio de sesión antiguo no
-cuenta y las líneas a medio escribir no se evalúan.
+1. **Vía A — Conmutación instantánea por slot (`credman.promote_slot_to_active`):**
+   - Si la cuenta destino dispone de slot `gemini:antigravity:slot:<destino>`:
+     - **Mitigación de Refresh Token Rotation (RTR):** Lee primero la sesión activa actual en
+       `gemini:antigravity` y actualiza el slot de la cuenta saliente (`sync_outgoing_alias`),
+       asegurando que renovaciones automáticas de tokens realizadas por `agy` no se pierdan.
+     - **Promoción:** Lee el slot de la cuenta destino, valida su integridad y que su
+       `id_token_email` coincida con el email registrado, y lo escribe en `gemini:antigravity`.
+     - **Registro:** Actualiza `state.active`, registra la rotación en el historial y avisa
+       si hay procesos `agy.exe` abiertos para que se reinicien.
+     - El cambio es inmediato y no requiere navegador, `/logout` ni interacción web.
+
+2. **Vía B — Fallback a cambio guiado y verificado (`_guided_account_switch`):**
+   - Si la cuenta destino no tiene slot o la llamada a CredMan eleva `CredManError`:
+     - Comprueba que la cuenta tenga email registrado.
+     - Toma una marca de los logs (`snapshot_log_offsets`).
+     - Instruye al usuario a ejecutar `/logout` e iniciar sesión en el navegador con el email.
+     - Sondea los logs hasta detectar `OAuth: authenticated successfully as <email>`.
+     - **Captura automática:** Tras verificar el inicio de sesión, guarda automáticamente el
+       slot `gemini:antigravity:slot:<destino>` para que los próximos cambios sean instantáneos.
+
+3. **Limpieza en `remove`:**
+   - Al eliminar una cuenta con `agyswitcher remove <alias>`, se elimina de forma segura su
+     slot en Windows Credential Manager (`credman.delete_slot`), previniendo credenciales huérfanas.
 
 Un cambio de **pool** dentro de la misma cuenta no requiere sesión y se registra
 directamente (`record_rotation`).
@@ -357,11 +380,11 @@ agyswitcher run -- --model "claude-sonnet" -p "Hola"
 
 | Regla | Detalle |
 | :--- | :--- |
-| **No tocar credenciales ni `.gemini`** | La sesión de Google (Administrador de credenciales) nunca se lee, copia ni modifica. `%USERPROFILE%\.gemini` no se modifica; de sus logs solo se leen líneas para detectar cuota y eventos de inicio de sesión. |
+| **Tokens en almacén seguro (DPAPI)** | Los tokens OAuth residen exclusivamente en Windows Credential Manager (`gemini:antigravity` y `gemini:antigravity:slot:*`) gestionados por DPAPI. AgySwitcher nunca guarda, descifra ni manipula tokens en archivos de configuración (`config.json`, `state.json`), variables ni logs. `%USERPROFILE%\.gemini` es común y no se modifica. |
 | **Sanitización obligatoria** | Antes de escribir cualquier línea en log, se redactan patrones: `token`, `authorization`, `cookie`, `refresh_token`, `access_token`. |
 | **Sin `shell=True`** | Toda invocación de subprocesos usa listas de argumentos explícitas. |
 | **Rutas con `pathlib.Path`** | Todas las rutas se construyen y validan con `pathlib.Path`. No se aceptan rutas de fuentes externas sin validación previa. |
-| **Inicio de sesión manual** | AgySwitcher nunca automatiza el inicio de sesión de Google: solo indica el email y verifica el resultado en los logs. |
+| **Inicio de sesión manual** | AgySwitcher nunca automatiza el inicio de sesión de Google: el primer login de cada cuenta lo realiza siempre el usuario en el navegador. |
 | **No telemetría** | No se envía ningún dato a servicios remotos. Todo el estado es local. |
 
 ---
@@ -373,7 +396,8 @@ Módulos de `agyswitcher/src/agyswitcher/`:
 | Módulo | Responsabilidad |
 | :--- | :--- |
 | `__init__.py` | Versión y nombre de la aplicación |
-| `cli.py` | Entry point CLI (typer) y cambio de cuenta guiado |
+| `cli.py` | Entry point CLI (typer), conmutación instantánea y cambio guiado |
+| `credman.py` | Gestión de slots en Windows Credential Manager (ctypes sobre Advapi32.dll) |
 | `config.py` | Lectura y escritura de config.json |
 | `state.py` | Lectura y escritura atómica de state.json |
 | `models.py` | Account, AppState, AccountQuotaInfo |

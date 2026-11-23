@@ -1,14 +1,24 @@
 # Conceptos
 
-## Una sola sesión de Google en `agy`
+## Una sola sesión activa en `agy` y slots de sesión
 
-`agy` guarda **una única sesión de Google** en el *Administrador de credenciales de
-Windows*. En cada momento hay una sola cuenta con la sesión iniciada, y para usar otra hay
-que cerrar sesión en `agy` (`/logout`) e iniciarla con la otra cuenta en el navegador.
+`agy` guarda **una única sesión de Google activa** en el *Administrador de credenciales de
+Windows* (bajo el nombre `gemini:antigravity`). En cada momento hay una sola cuenta con la
+sesión activa en `agy`.
 
-AgySwitcher **no lee, copia ni modifica** esa sesión ni tus contraseñas, y **nunca inicia
-sesión por ti**. Lo que hace es decirte con qué cuenta entrar y comprobar después que lo
-has hecho.
+Para alternar cuentas de forma cómoda y sin tener que pasar por el navegador cada vez,
+AgySwitcher gestiona **slots de sesión** (`gemini:antigravity:slot:<alias>`) dentro del propio
+almacén seguro de Windows:
+- **Protección nativa con DPAPI:** Los tokens residen exclusivamente en el Administrador de
+  credenciales de Windows, cifrados y protegidos por el sistema operativo. AgySwitcher
+  **nunca guarda contraseñas ni tokens en archivos de configuración ni registros**.
+- **Conmutación instantánea:** Al cambiar a una cuenta que tiene slot guardado (aparece con
+  la etiqueta `[slot]` en `list`), AgySwitcher promueve la credencial destino a la sesión
+  activa al instante, sincronizando previamente el token de la cuenta saliente en su propio
+  slot para proteger rotaciones recientes de tokens.
+- **Cambio guiado como alternativa:** Si una cuenta aún no dispone de slot (o si la sesión
+  caducó), AgySwitcher recurre automáticamente al cambio guiado en el navegador y guarda el
+  slot tras verificar el inicio de sesión.
 
 ## Una carpeta común para todas las cuentas
 
@@ -51,16 +61,22 @@ agotadas, AgySwitcher lo indica como «según los datos guardados», muestra la 
 dato y el reinicio previsto de cada cuenta, y te sugiere comprobar primero la de reinicio
 más próximo.
 
-## El cambio de cuenta guiado
+## Cambio de cuenta y slots
 
-`agyswitcher set-active <alias>` (o `rotate`) no puede cambiar la cuenta por sí mismo.
-Sigue estos pasos:
+Al ejecutar `agyswitcher set-active <alias>` o `agyswitcher rotate`:
 
-1. Te indica el email de la cuenta destino.
-2. Tú, en `agy`, ejecutas `/logout` e inicias sesión con ese email.
-3. AgySwitcher espera a ver ese inicio de sesión en los registros de `agy` (solo cuenta uno
-   **posterior** a la petición) y entonces registra el cambio.
-4. Te muestra la instrucción para que el agente retome el proyecto.
+1. **Si la cuenta destino tiene slot guardado (`[slot]`):**
+   - El cambio es **instantáneo**: AgySwitcher promueve la sesión de la cuenta destino a la
+     activa de `agy` al momento, sin abrir el navegador ni pedirte ejecutar `/logout`.
+   - Si tenías sesiones de `agy` abiertas, el cambio surte efecto en las nuevas consolas o al
+     reiniciarlas.
+2. **Si la cuenta no tiene slot guardado (o si la sesión guardada expiró):**
+   - Se inicia el **cambio guiado**:
+     a. Te indica el email con el que debes iniciar sesión.
+     b. En `agy`, ejecutas `/logout` e inicias sesión con ese email en el navegador.
+     c. AgySwitcher detecta el inicio de sesión en los registros de `agy`, registra el cambio
+        y guarda automáticamente el nuevo slot en Credential Manager para el futuro.
+     d. Te muestra la instrucción para que el agente retome el proyecto.
 
 Si inicias sesión con otra cuenta te avisa y sigue esperando; si cancelas (`Ctrl+C`) o se
 acaba el tiempo, la cuenta activa no cambia.

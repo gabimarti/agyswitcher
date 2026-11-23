@@ -117,21 +117,29 @@ el agente ya no podrá escribir nada.
     Antes de cambiar de cuenta, haz también un `git commit`. Así el estado del código y el de
     la memoria del proyecto coinciden.
 
-### 4. Cambia de cuenta (guiado y verificado)
+### 4. Cambia de cuenta (conmutación instantánea o guiada)
 
 ```powershell
 agyswitcher set-active personal
 ```
 
+Si la cuenta destino ya dispone de slot guardado en Windows Credential Manager (mostrado con
+`[slot]` en `agyswitcher list`), el cambio se realiza **al instante**: AgySwitcher promueve su
+sesión a la activa de `agy` sin necesidad de abrir el navegador ni ejecutar `/logout`.
+
+Si la cuenta no tiene slot guardado aún (o si la sesión expiró), AgySwitcher inicia el
+**cambio guiado**:
+
 ![agyswitcher set-active: instrucciones, verificación e instrucción para retomar](../assets/capturas/cambio-guiado.svg)
 
 AgySwitcher te muestra con qué email entrar. En `agy` escribe `/logout` e inicia sesión en el
-navegador con esa cuenta. AgySwitcher lo comprueba en los registros de `agy`, consulta la
-cuota de la nueva cuenta y copia la instrucción para retomar.
+navegador con esa cuenta. AgySwitcher lo comprueba en los registros de `agy`, guarda su slot en
+Credential Manager para futuros cambios instantáneos, consulta la cuota y te ofrece la
+instrucción para retomar.
 
 ¿No sabes cuál elegir? `agyswitcher rotate` elige por ti: si el pool que usas está agotado
-y el otro de la misma cuenta está libre, cambia de pool (sin iniciar sesión); si no, te lleva
-a la siguiente cuenta con cuota.
+y el otro de la misma cuenta está libre, cambia de pool (sin tocar la sesión); si no, te lleva
+a la siguiente cuenta con cuota (de forma instantánea si tiene slot o guiada si no).
 
 ### 5. Retoma donde lo dejaste
 

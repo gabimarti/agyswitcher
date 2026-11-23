@@ -18,6 +18,9 @@ Todos los cambios relevantes de AgySwitcher se documentan en este fichero.
 - Limpieza automática del slot de sesión en Windows Credential Manager al eliminar una cuenta con `remove`.
 - Fallback automático y transparente al cambio guiado por navegador si una cuenta no dispone de slot
   o se produce un error en la API de credenciales.
+- Documentación técnica completa de arquitectura de slots CredMan en `docs/architecture.md`,
+  guías actualizadas en el manual (`conceptos.md`, `comandos.md`, `dia-a-dia.md`, `problemas.md`)
+  y suite de integración E2E del ciclo de vida de slots en `tests/test_cli.py`.
 
 ## [1.4.1] - 2026-11-23
 
