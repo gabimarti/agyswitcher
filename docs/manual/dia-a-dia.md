@@ -21,7 +21,7 @@ resuelve AgySwitcher:
 | Sin AgySwitcher | Con AgySwitcher |
 | :--- | :--- |
 | No sabes cuánta cuota le queda a cada cuenta ni cuándo se reinicia. | `agyswitcher list` te lo muestra en una tabla. |
-| Te enteras de que se acabó cuando el agente deja de responder. | Te avisa al bajar del 15 % y te deja lista la instrucción para guardar el estado. |
+| Te enteras de que se acabó cuando el agente deja de responder. | Te avisa al bajar del 20 % y guarda el fichero HANDOFF.md para no perder el contexto. |
 | Cambias de cuenta y no sabes si `agy` usa la que crees. | El cambio es guiado y se verifica en los registros de `agy`. |
 | La nueva sesión empieza de cero: hay que volver a explicarlo todo. | El proyecto guarda su memoria en `dev_mem/` y la nueva sesión la lee para continuar. |
 
@@ -104,8 +104,8 @@ En la primera instrucción de cada sesión, pide al agente que se ponga al día:
 
 ### 3. Aviso de cuota baja: guarda el estado **antes** de que se acabe
 
-Cuando la cuota del pool que usas baja del 15 %, AgySwitcher avisa y copia al portapapeles
-la instrucción de guardado. Pégala en `agy`:
+Cuando la cuota del pool que usas baja del 20 %, AgySwitcher te avisa. Ejecuta
+`agyswitcher handoff save` para guardar `dev_mem/HANDOFF.md` y pega la instrucción en `agy`:
 
 ![agyswitcher handoff save: instrucción para que el agente guarde el estado](../assets/capturas/handoff-save.svg)
 

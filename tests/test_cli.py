@@ -1973,8 +1973,8 @@ def _clipboard_recorder(monkeypatch: pytest.MonkeyPatch, ok: bool = True) -> lis
 def test_config_shows_defaults() -> None:
     result = runner.invoke(app, ["config"])
     assert result.exit_code == 0
-    assert "15 % (por defecto)" in result.output
-    assert "activada" in result.output
+    assert "20 % (por defecto)" in result.output
+    assert "desactivada" in result.output
 
 
 def test_config_sets_and_resets_low_quota() -> None:
@@ -1984,7 +1984,7 @@ def test_config_sets_and_resets_low_quota() -> None:
 
     result = runner.invoke(app, ["config", "low-quota", "default"])
     assert result.exit_code == 0
-    assert "15 % (por defecto)" in result.output
+    assert "20 % (por defecto)" in result.output
 
 
 @pytest.mark.parametrize("value", ["0", "100", "veinte"])
@@ -2034,6 +2034,7 @@ def test_low_quota_warning_copies_save_prompt(
 ) -> None:
     monkeypatch.chdir(tmp_path)
     copied = _clipboard_recorder(monkeypatch)
+    runner.invoke(app, ["config", "auto-copy", "on"])
     runner.invoke(app, ["add", "cuenta-1", "--email", "uno@example.com"])
     _set_quota("cuenta-1", 10)
 
@@ -2050,7 +2051,6 @@ def test_low_quota_warning_without_auto_copy(
     monkeypatch.chdir(tmp_path)
     copied = _clipboard_recorder(monkeypatch)
     runner.invoke(app, ["add", "cuenta-1", "--email", "uno@example.com"])
-    runner.invoke(app, ["config", "auto-copy", "off"])
     _set_quota("cuenta-1", 10)
 
     flat = " ".join(runner.invoke(app, ["list", "--cached"]).output.split())
@@ -2069,6 +2069,24 @@ def test_handoff_copy(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     assert copied == [DEFAULT_RESUME_PROMPT]
 
 
+def test_handoff_save_creates_file_and_includes_note(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    runner.invoke(app, ["add", "cuenta-1", "--email", "uno@example.com"])
+
+    result = runner.invoke(app, ["handoff", "save", "--note", "Revisando módulo de login"])
+    assert result.exit_code == 0
+    assert "Fichero de traspaso guardado en:" in result.output
+    assert "HANDOFF.md" in result.output
+
+    handoff_file = tmp_path / "HANDOFF.md"
+    assert handoff_file.is_file()
+    content = handoff_file.read_text(encoding="utf-8")
+    assert "Revisando módulo de login" in content
+    assert "cuenta-1" in content
+
+
 def test_handoff_copy_requires_save_or_resume(monkeypatch: pytest.MonkeyPatch) -> None:
     copied = _clipboard_recorder(monkeypatch)
     result = runner.invoke(app, ["handoff", "--copy"])
@@ -2076,7 +2094,8 @@ def test_handoff_copy_requires_save_or_resume(monkeypatch: pytest.MonkeyPatch) -
     assert copied == []
 
 
-def test_handoff_copy_failure_is_reported(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_handoff_copy_failure_is_reported(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.chdir(tmp_path)
     _clipboard_recorder(monkeypatch, ok=False)
     result = runner.invoke(app, ["handoff", "save", "-c"])
     assert result.exit_code == 0
@@ -2088,6 +2107,7 @@ def test_verified_switch_copies_resume_prompt(
 ) -> None:
     monkeypatch.chdir(tmp_path)
     copied = _clipboard_recorder(monkeypatch)
+    runner.invoke(app, ["config", "auto-copy", "on"])
     _two_accounts()
     _login_ok(monkeypatch)
 
@@ -2097,6 +2117,19 @@ def test_verified_switch_copies_resume_prompt(
     from agyswitcher.project import DEFAULT_RESUME_PROMPT
 
     assert copied == [DEFAULT_RESUME_PROMPT]
+
+
+def test_verified_switch_hints_handoff_file_when_present(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "HANDOFF.md").write_text("# HANDOFF\n", encoding="utf-8")
+    _two_accounts()
+    _login_ok(monkeypatch)
+
+    result = runner.invoke(app, ["set-active", "cuenta-2"])
+    assert result.exit_code == 0
+    assert "Lee HANDOFF.md y continúa" in result.output
 
 
 _AGY_LOG_429 = (

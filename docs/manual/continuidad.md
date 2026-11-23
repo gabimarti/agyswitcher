@@ -42,27 +42,33 @@ varios equipos). Nunca guardes en `dev_mem/` contraseñas, tokens ni datos perso
 
    ```powershell
    agyswitcher handoff save
+   # O añadiendo notas específicas:
+   agyswitcher handoff save --note "Paso 2 completado, falta probar en Windows"
    ```
 
-   Copia la instrucción y pégala en `agy`. El agente actualizará `ESTADO.md`, `TODO.md` y
-   el diario.
+   Esto guarda automáticamente el fichero `dev_mem/HANDOFF.md` (o `HANDOFF.md` en la raíz)
+   y muestra la instrucción para que el agente actualice `ESTADO.md`, `TODO.md` y el diario.
 
 2. **Cambia de cuenta** con `agyswitcher set-active <alias>`.
 
-3. **Después del cambio**, AgySwitcher muestra la instrucción para retomar (también con
-   `agyswitcher handoff resume`). Pégala como primera instrucción en `agy`: el agente leerá
-   la memoria, te resumirá dónde estáis y esperará tu confirmación.
+3. **Después del cambio**, AgySwitcher te recordará cómo retomar indicándole al nuevo agente:
+   `Lee dev_mem/HANDOFF.md y continúa` (o mostrando el texto de `agyswitcher handoff resume`).
+   El agente leerá la memoria, te resumirá dónde estáis y esperará tu confirmación.
 
 ## Aviso de cuota baja
 
 `list`, `status` y `run` avisan cuando al **pool activo de la cuenta activa** le queda un
-**15 % o menos**. Es el momento de guardar el estado: si esperas a que se agote, el agente
-ya no podrá hacerlo. El aviso deja en el portapapeles la instrucción de `handoff save`, lista
-para pegar en `agy`, e indica la siguiente cuenta con cuota. Del mismo modo, tras un cambio
-de cuenta verificado queda copiada la instrucción para retomar. La copia automática se
-desactiva con `agyswitcher config auto-copy off`.
+**20 % o menos**. Es el momento de guardar el estado: si esperas a que se agote, el agente
+ya no podrá hacerlo. El aviso te recuerda ejecutar `agyswitcher handoff save` para dejar listo
+el fichero `HANDOFF.md` e indica la siguiente cuenta con cuota.
 
-El umbral se cambia para todos los proyectos con `agyswitcher config low-quota 20`, o solo
+> [!NOTE]
+> La copia automática al portapapeles está desactivada por defecto (`auto-copy off`) porque
+> al cerrar e iniciar sesión con Google en `agy` o en el navegador, se suelen copiar claves o
+> URLs que sobrescriben el portapapeles. Al persistir el traspaso en `HANDOFF.md`, el contexto
+> nunca se pierde. Puedes copiar manualmente en cualquier momento con `handoff --copy`.
+
+El umbral se cambia para todos los proyectos con `agyswitcher config low-quota 25`, o solo
 para uno en su `.agyswitcher.toml`, que tiene prioridad:
 
 ```toml

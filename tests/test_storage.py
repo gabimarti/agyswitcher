@@ -393,19 +393,19 @@ def test_switch_history_is_capped_when_loading(tmp_path: Path) -> None:
 def test_settings_defaults_when_missing(config_file: Path) -> None:
     settings = load_settings(config_file)
     assert settings.low_quota_percent is None
-    assert settings.auto_copy is True
+    assert settings.auto_copy is False
 
 
 def test_settings_roundtrip_keeps_accounts(config_file: Path) -> None:
     """Guardar ajustes conserva las cuentas, y guardar cuentas conserva los ajustes."""
     save_accounts({"a": Account(alias="a", email="a@example.com")}, config_file)
-    save_settings(Settings(low_quota_percent=25, auto_copy=False), config_file)
+    save_settings(Settings(low_quota_percent=25, auto_copy=True), config_file)
     assert "a" in load_accounts(config_file)
 
     save_accounts({"b": Account(alias="b")}, config_file)
     settings = load_settings(config_file)
     assert settings.low_quota_percent == 25
-    assert settings.auto_copy is False
+    assert settings.auto_copy is True
     assert set(load_accounts(config_file)) == {"b"}
 
 
@@ -416,7 +416,7 @@ def test_settings_invalid_values_are_ignored(config_file: Path) -> None:
     )
     settings = load_settings(config_file)
     assert settings.low_quota_percent is None
-    assert settings.auto_copy is True
+    assert settings.auto_copy is False
     assert Settings.from_dict("no es un objeto") == Settings()
 
 

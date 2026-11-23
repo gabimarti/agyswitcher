@@ -6,8 +6,19 @@ Todos los cambios relevantes de AgySwitcher se documentan en este fichero.
 
 ### Añadido
 
+- Fichero de traspaso local `HANDOFF.md` (o `dev_mem/HANDOFF.md` si el proyecto tiene esa carpeta)
+  al ejecutar `agyswitcher handoff save`, con soporte de notas adicionales mediante `--note`. Permite
+  que el nuevo agente retome el trabajo directamente desde el archivo sin depender del portapapeles.
 - Enlace al artículo «Programar con agentes de IA a coste cero: cuotas, contexto y
   continuidad» en el README y en la portada de la web.
+
+### Cambiado
+
+- El umbral por defecto de aviso de cuota baja pasa del 15 % al 20 %, proporcionando mayor margen
+  para guardar el estado antes del corte de cuota.
+- La copia automática de instrucciones al portapapeles (`auto-copy`) queda desactivada por defecto
+  para evitar que el flujo de autenticación de Google en el navegador la sobrescriba; la continuidad
+  se preserva en `HANDOFF.md`. Se puede seguir copiando a mano con `handoff --copy`.
 
 ### Corregido
 

@@ -54,11 +54,13 @@ from agyswitcher.project import (
     AGENT_POINTER_FILES,
     DEFAULT_AGENTS,
     ProjectError,
+    handoff_file_path,
     load_handoff_prompts,
     low_quota_percent,
     parse_agents,
     resolve_low_quota_threshold,
     scaffold_project,
+    write_handoff_file,
 )
 from agyswitcher.quota import QuotaDetector
 from agyswitcher.rotator import (
@@ -167,11 +169,16 @@ def _auto_copy(text: str) -> bool:
 
 def _print_resume_hint() -> None:
     """Tras un cambio de cuenta verificado, muestra la instrucción para retomar el proyecto."""
-    prompts = load_handoff_prompts(Path.cwd())
-    console.print(
-        "\n[bold]Para retomar el trabajo con la nueva cuenta[/bold], pega esto como primera "
-        "instrucción en agy:"
-    )
+    cwd = Path.cwd()
+    prompts = load_handoff_prompts(cwd)
+    handoff_file = handoff_file_path(cwd)
+    console.print("\n[bold]Para retomar el trabajo con la nueva cuenta[/bold], indica en agy:")
+    if handoff_file.is_file():
+        try:
+            rel = handoff_file.relative_to(cwd)
+        except ValueError:
+            rel = handoff_file
+        console.print(f"  [bold cyan]Lee {rel} y continúa[/bold cyan]\n")
     _print_prompt("Retomar", prompts.resume)
     if _auto_copy(prompts.resume):
         console.print("[dim]Instrucción copiada al portapapeles.[/dim]")
@@ -869,9 +876,9 @@ def init_project(
 @app.command(
     name="handoff",
     help=(
-        "Muestra las instrucciones para traspasar el trabajo entre cuentas o agentes: 'save' "
-        "(guardar el estado antes de cambiar) y 'resume' (retomar después). Se personalizan en "
-        ".agyswitcher.toml. Ejemplo: agyswitcher handoff save --copy"
+        "Gestiona las instrucciones y el fichero de traspaso (HANDOFF.md) para continuar "
+        "el trabajo entre cuentas o agentes: 'save' (guarda el fichero de traspaso y muestra "
+        "la instrucción) y 'resume' (muestra cómo retomar). Ejemplo: agyswitcher handoff save"
     ),
 )
 def handoff(
@@ -879,12 +886,18 @@ def handoff(
         str,
         typer.Argument(help="'save', 'resume' o 'all' (por defecto)."),
     ] = "all",
+    note: Annotated[
+        str | None,
+        typer.Option(
+            "--note", "-n", help="Nota opcional sobre el estado para incluir en HANDOFF.md."
+        ),
+    ] = None,
     copy: Annotated[
         bool,
         typer.Option("--copy", "-c", help="Copiar también la instrucción al portapapeles."),
     ] = False,
 ) -> None:
-    """Muestra las instrucciones de traspaso del proyecto actual."""
+    """Muestra las instrucciones de traspaso y gestiona el fichero HANDOFF.md."""
     choice = which.strip().lower()
     if choice not in {"save", "resume", "all"}:
         typer.secho("Error: usa 'save', 'resume' o 'all'.", fg=typer.colors.RED, err=True)
@@ -896,7 +909,8 @@ def handoff(
             err=True,
         )
         raise typer.Exit(code=1)
-    prompts = load_handoff_prompts(Path.cwd())
+    cwd = Path.cwd()
+    prompts = load_handoff_prompts(cwd)
     if prompts.error:
         console.print(
             f"[yellow]No se pudo leer {prompts.source}: {prompts.error}. "
@@ -909,11 +923,51 @@ def handoff(
         )
     else:
         console.print(f"[dim]Instrucciones de {prompts.source}[/dim]")
+
+    if choice in {"save", "all"}:
+        active_alias = None
+        active_pool = None
+        try:
+            state = load_state()
+            active_alias = state.active
+            active_pool = state.active_model_group
+        except (StateError, ConfigError):
+            pass
+        try:
+            h_path = write_handoff_file(
+                cwd,
+                prompts=prompts,
+                account=active_alias,
+                pool=active_pool,
+                notes=note,
+            )
+            try:
+                rel_h = h_path.relative_to(cwd)
+            except ValueError:
+                rel_h = h_path
+            console.print(f"[green]✓ Fichero de traspaso guardado en:[/green] [bold]{rel_h}[/bold]")
+        except ProjectError as err:
+            console.print(
+                f"[yellow]Aviso: no se pudo escribir el fichero de traspaso: {err}[/yellow]"
+            )
+
+    h_target = handoff_file_path(cwd)
+    try:
+        h_rel = h_target.relative_to(cwd)
+    except ValueError:
+        h_rel = h_target
+
     if choice in {"save", "all"}:
         console.print("\n[bold]Antes de cambiar de cuenta[/bold], pega esto en agy:")
         _print_prompt("Guardar estado", prompts.save)
+        if h_target.is_file():
+            console.print(
+                f"[dim]Al abrir agy con la nueva cuenta, pídele: 'Lee {h_rel} y continúa'.[/dim]"
+            )
     if choice in {"resume", "all"}:
-        console.print("\n[bold]Después de cambiar de cuenta[/bold], pega esto en agy:")
+        console.print("\n[bold]Después de cambiar de cuenta[/bold], indica en agy:")
+        if h_target.is_file():
+            console.print(f"  [bold cyan]Lee {h_rel} y continúa[/bold cyan]\n")
         _print_prompt("Retomar", prompts.resume)
     if copy:
         text = prompts.save if choice == "save" else prompts.resume
@@ -936,7 +990,7 @@ def _show_settings(settings: Settings) -> None:
     console.print(f"Ajustes de AgySwitcher ([dim]{default_config_path()}[/dim]):")
     console.print(
         f"  low-quota  Umbral de cuota baja: "
-        f"{f'{low} %' if low is not None else '15 % (por defecto)'}"
+        f"{f'{low} %' if low is not None else '20 % (por defecto)'}"
     )
     console.print(
         "  auto-copy  Copia automática al portapapeles: "

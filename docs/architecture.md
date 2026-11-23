@@ -110,15 +110,18 @@ proyecto**, no en `agy`:
   que no estén en UTF-8.
 - `agyswitcher handoff [save|resume]` muestra las instrucciones de traspaso, leídas de
   `.agyswitcher.toml` (búsqueda hacia arriba desde la carpeta actual; `tomllib`) o las de
-  por defecto si no existe o está mal formado.
+  por defecto si no existe o está mal formado. Al ejecutar `save`, guarda automáticamente el
+  fichero `dev_mem/HANDOFF.md` (o `HANDOFF.md` en la raíz) para que el nuevo agente retome el
+  trabajo sin depender del portapapeles.
 - Aviso de cuota baja: `list`, `status` y `run` avisan para guardar el estado a tiempo y
   proponen la siguiente cuenta. Umbral (`project.resolve_low_quota_threshold`): `[quota]
   low_percent` del `.agyswitcher.toml` del proyecto > `settings.low_quota_percent` de
-  `config.json` (`agyswitcher config low-quota`) > 15 % (`config.LOW_QUOTA_DEFAULT`).
+  `config.json` (`agyswitcher config low-quota`) > 20 % (`config.LOW_QUOTA_DEFAULT`).
 - Portapapeles (`clipboard.py`): API de Windows con `ctypes` (`CF_UNICODETEXT`), sin
-  dependencias ni procesos auxiliares; nunca lanza excepciones. Copia `handoff --copy` y,
-  si `settings.auto_copy` (por defecto), la instrucción de guardar al avisar de cuota baja y
-  la de retomar tras un cambio verificado. Los tests sustituyen la escritura real
+  dependencias ni procesos auxiliares; nunca lanza excepciones. Copia con `handoff --copy`.
+  La copia automática está desactivada por defecto (`settings.auto_copy = false`) porque el inicio
+  de sesión de Google o agy en el navegador copia tokens/códigos al portapapeles y sobrescribe
+  lo copiado; por ello se persiste en `HANDOFF.md`. Los tests sustituyen la escritura real
   (`conftest.py`).
 
 ### 3.5 Atribución de cuota
@@ -150,8 +153,8 @@ con cuentas ficticias). Los tests la eliminan del entorno para no salir del HOME
     }
   },
   "settings": {                              // agyswitcher config
-    "low_quota_percent": 20,                 // opcional; sin él, 15
-    "auto_copy": true
+    "low_quota_percent": 25,                 // opcional; sin él, 20
+    "auto_copy": false
   }
 }
 ```

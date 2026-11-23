@@ -121,7 +121,8 @@ def test_low_quota_percent_thresholds() -> None:
     assert low_quota_percent(info, "external") is None
     assert low_quota_percent(AccountQuotaInfo(gemini_percent=0), "gemini") is None
     assert low_quota_percent(AccountQuotaInfo(gemini_percent=15), "gemini") == 15
-    assert low_quota_percent(AccountQuotaInfo(gemini_percent=16), "gemini") is None
+    assert low_quota_percent(AccountQuotaInfo(gemini_percent=20), "gemini") == 20
+    assert low_quota_percent(AccountQuotaInfo(gemini_percent=21), "gemini") is None
     assert low_quota_percent(None, "gemini") is None
     assert low_quota_percent(AccountQuotaInfo(), "gemini") is None
 
@@ -199,11 +200,11 @@ def test_merge_refuses_non_utf8(tmp_path: Path) -> None:
 
 
 def test_low_quota_threshold_default_global_and_project(tmp_path: Path) -> None:
-    """Prioridad: proyecto > global > por defecto (15)."""
+    """Prioridad: proyecto > global > por defecto (20)."""
     sub = tmp_path / "src"
     sub.mkdir()
     default = resolve_low_quota_threshold(sub, None)
-    assert (default.percent, default.source) == (15, "por defecto")
+    assert (default.percent, default.source) == (20, "por defecto")
     assert resolve_low_quota_threshold(sub, 30).percent == 30
 
     (tmp_path / ".agyswitcher.toml").write_text("[quota]\nlow_percent = 8\n", encoding="utf-8")
@@ -214,14 +215,14 @@ def test_low_quota_threshold_default_global_and_project(tmp_path: Path) -> None:
 
 def test_low_quota_threshold_project_without_quota_uses_global(tmp_path: Path) -> None:
     (tmp_path / ".agyswitcher.toml").write_text("[handoff]\n", encoding="utf-8")
-    threshold = resolve_low_quota_threshold(tmp_path, 20)
-    assert (threshold.percent, threshold.source, threshold.error) == (20, "global", None)
+    threshold = resolve_low_quota_threshold(tmp_path, 25)
+    assert (threshold.percent, threshold.source, threshold.error) == (25, "global", None)
 
 
 def test_low_quota_threshold_invalid_project_value_is_reported(tmp_path: Path) -> None:
     (tmp_path / ".agyswitcher.toml").write_text("[quota]\nlow_percent = 0\n", encoding="utf-8")
     threshold = resolve_low_quota_threshold(tmp_path, None)
-    assert threshold.percent == 15
+    assert threshold.percent == 20
     assert threshold.error is not None and "low_percent" in threshold.error
 
 
@@ -239,5 +240,40 @@ def test_project_toml_template_documents_quota(tmp_path: Path) -> None:
 
     text = _project_toml()
     assert "# [quota]" in text
-    assert "# low_percent = 15" in text
+    assert "# low_percent = 20" in text
     assert "quota" not in tomllib.loads(text)  # comentado: no cambia nada por defecto
+
+
+def test_handoff_file_path_location(tmp_path: Path) -> None:
+    from agyswitcher.project import handoff_file_path
+
+    # Sin dev_mem/ -> en la raíz
+    assert handoff_file_path(tmp_path) == tmp_path / "HANDOFF.md"
+
+    # Con dev_mem/ -> dentro de dev_mem/
+    dev_mem = tmp_path / "dev_mem"
+    dev_mem.mkdir()
+    assert handoff_file_path(tmp_path) == dev_mem / "HANDOFF.md"
+
+
+def test_write_handoff_file_creates_and_overwrites(tmp_path: Path) -> None:
+    from agyswitcher.project import write_handoff_file
+
+    dev_mem = tmp_path / "dev_mem"
+    dev_mem.mkdir()
+
+    path = write_handoff_file(
+        tmp_path,
+        account="mi-cuenta",
+        pool="gemini",
+        notes="Avanzado paso 1",
+    )
+    assert path == dev_mem / "HANDOFF.md"
+    assert path.is_file()
+
+    content = path.read_text(encoding="utf-8")
+    assert "# HANDOFF — Traspaso de Sesión" in content
+    assert "mi-cuenta" in content
+    assert "gemini" in content
+    assert "Avanzado paso 1" in content
+    assert "Continuamos el trabajo en una nueva sesión" in content

@@ -248,12 +248,12 @@ def test_check_project_states(tmp_path: Path) -> None:
 def test_check_project_reports_project_threshold_and_errors(tmp_path: Path) -> None:
     toml = tmp_path / ".agyswitcher.toml"
     toml.write_text("[quota]\nlow_percent = 25\n", encoding="utf-8")
-    config = _by_name(check_project(tmp_path, 15))["Configuración del proyecto"]
+    config = _by_name(check_project(tmp_path, 20))["Configuración del proyecto"]
     assert config.status is CheckStatus.OK
     assert "25 %" in config.detail
 
     toml.write_text("[quota]\nlow_percent = 150\n", encoding="utf-8")
-    config = _by_name(check_project(tmp_path, 15))["Configuración del proyecto"]
+    config = _by_name(check_project(tmp_path, 20))["Configuración del proyecto"]
     assert config.status is CheckStatus.WARN
 
 

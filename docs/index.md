@@ -45,8 +45,8 @@ reinicia cada una se vuelve un trabajo en sí mismo.
 
 - **Aviso a tiempo**
 
-    Cuando la cuota baja del 15 % (configurable), te avisa y te deja en el portapapeles la
-    instrucción para que el agente guarde el estado del proyecto **antes** de quedarse sin
+    Cuando la cuota baja del 20 % (configurable), te avisa para que el agente guarde el
+    estado del proyecto y prepare el fichero de traspaso `HANDOFF.md` **antes** de quedarse sin
     tokens.
 
 - **Cambio de cuenta guiado y verificado**
@@ -99,10 +99,10 @@ conversaciones, MCP, *skills*) es común a todas las cuentas. AgySwitcher se apo
 
 ```mermaid
 flowchart LR
-    A["Cuota baja<br/>(aviso ≤ 15 %)"] --> B["agyswitcher handoff save<br/>el agente guarda el estado<br/>en dev_mem/"]
+    A["Cuota baja<br/>(aviso ≤ 20 %)"] --> B["agyswitcher handoff save<br/>guarda HANDOFF.md y el<br/>estado en dev_mem/"]
     B --> C["agyswitcher set-active trabajo<br/>/logout + inicio de sesión<br/>(verificado)"]
-    C --> D["Instrucción para retomar<br/>el agente lee dev_mem/<br/>y continúa"]
-    D --> A
+    D["Instrucción para retomar<br/>el agente lee HANDOFF.md<br/>y continúa"] --> A
+    C --> D
 ```
 
 Más detalle en [Conceptos](manual/conceptos.md).

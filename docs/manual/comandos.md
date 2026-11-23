@@ -67,7 +67,7 @@ fecha de reinicio. La cuenta activa aparece primero; el resto, por el reinicio m
 | `--cached`, `-c` | Solo datos guardados, sin consultar a `agy`. |
 | `--refresh-all`, `-a` | Obsoleto: equivale a `--live`. |
 
-Al final avisa si la cuota del pool activo es baja (15 % o menos por defecto; ver
+Al final avisa si la cuota del pool activo es baja (20 % o menos por defecto; ver
 [`config`](#config)) o si la sesión de `agy`
 no coincide con la cuenta activa.
 
@@ -220,18 +220,22 @@ agyswitcher init --dry-run
 
 ## handoff
 
-Muestra las instrucciones de traspaso del proyecto actual, listas para copiar y pegar en el
-agente.
+Muestra las instrucciones de traspaso del proyecto actual y gestiona el fichero `HANDOFF.md`.
+Al ejecutar `save`, guarda automáticamente `dev_mem/HANDOFF.md` (o `HANDOFF.md` en la raíz)
+con las notas de traspaso y el prompt para que el siguiente agente retome el trabajo sin
+depender del portapapeles.
 
 ```powershell
-agyswitcher handoff save     # guardar el estado antes de cambiar de cuenta
-agyswitcher handoff resume   # retomar después del cambio
-agyswitcher handoff          # ambas
-agyswitcher handoff save -c  # además, copiarla al portapapeles
+agyswitcher handoff save                              # guardar HANDOFF.md y ver la instrucción
+agyswitcher handoff save --note "Falta probar en Win" # añadir notas de estado al fichero
+agyswitcher handoff resume                            # ver cómo retomar después del cambio
+agyswitcher handoff                                   # ambas
+agyswitcher handoff save -c                           # además, copiarla al portapapeles
 ```
 
 | Opción | Descripción |
 | :--- | :--- |
+| `--note`, `-n` | Nota opcional sobre el estado actual para incluir en `HANDOFF.md`. |
 | `--copy`, `-c` | Copia la instrucción al portapapeles (con `save` o `resume`). |
 
 ## config
@@ -240,15 +244,15 @@ Muestra o cambia los ajustes globales (se guardan en `config.json`).
 
 ```powershell
 agyswitcher config                     # ver los ajustes
-agyswitcher config low-quota 20        # avisar con un 20 % o menos
-agyswitcher config low-quota default   # volver al valor por defecto (15 %)
-agyswitcher config auto-copy off       # no copiar instrucciones automáticamente
+agyswitcher config low-quota 25        # avisar con un 25 % o menos
+agyswitcher config low-quota default   # volver al valor por defecto (20 %)
+agyswitcher config auto-copy on        # activar copia al portapapeles
 ```
 
 | Ajuste | Valores | Para qué |
 | :--- | :--- | :--- |
-| `low-quota` | 1-99 o `default` | Umbral del aviso de cuota baja (por defecto 15 %). |
-| `auto-copy` | `on` / `off` | Copiar automáticamente al portapapeles la instrucción de guardar al avisar de cuota baja y la de retomar tras un cambio de cuenta (por defecto `on`). |
+| `low-quota` | 1-99 o `default` | Umbral del aviso de cuota baja (por defecto 20 %). |
+| `auto-copy` | `on` / `off` | Copiar automáticamente al portapapeles (por defecto `off`, ya que el login de Google puede sobrescribir el portapapeles; se recomienda el fichero `HANDOFF.md`). |
 
 Un proyecto puede tener su propio umbral en `.agyswitcher.toml`, que tiene prioridad sobre
 el global (ver [Continuidad](continuidad.md#aviso-de-cuota-baja)).

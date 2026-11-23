@@ -54,13 +54,12 @@ quiero que el proyecto haga…»*. A partir de aquí trabajas con normalidad. Po
 ## 5. Cuando la cuota baja
 
 Consulta de vez en cuando `agyswitcher list` (o lanza `agy` con `agyswitcher run`). Cuando
-al pool activo le quede un 15 % o menos, verás:
+al pool activo le quede un 20 % o menos, verás:
 
 ```text
-[!] Cuota baja en 'personal' (Gemini: 12 % restante, umbral 15 %). Antes de que se agote,
+[!] Cuota baja en 'personal' (Gemini: 18 % restante, umbral 20 %). Antes de que se agote,
 pide a agy que guarde el estado del proyecto.
-La instrucción para guardar el estado está en el portapapeles: pégala en agy (también la
-muestra agyswitcher handoff save).
+Ejecuta agyswitcher handoff save y pega la instrucción en agy.
 Siguiente cuenta con cuota: 'trabajo'.
 ```
 

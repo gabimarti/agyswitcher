@@ -63,9 +63,10 @@ flowchart LR
   Gemini/agy, Claude Code, Copilot y Cursor que remiten a él, y memoria en `dev_mem/`. Nunca
   sobrescribe; `--merge` completa lo que falte.
 - `handoff save` y `handoff resume`: instrucciones para guardar el estado y retomarlo, válidas
-  para cualquier agente y personalizables por proyecto.
-- Copia automática al portapapeles de la instrucción de guardar (al avisar de cuota baja) y de
-  la de retomar (tras un cambio de cuenta verificado).
+  para cualquier agente y personalizables por proyecto. `handoff save` persiste el traspaso en
+  `dev_mem/HANDOFF.md` (o `HANDOFF.md`) con soporte de notas (`--note`).
+- La copia automática al portapapeles se desactiva por defecto para que el login en el navegador
+  no pise el contexto; la información queda preservada en `HANDOFF.md` (y se puede copiar con `-c`).
 
 ### Diagnóstico y experiencia en la terminal ✅
 

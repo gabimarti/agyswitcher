@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import tomllib
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
 
 from agyswitcher.config import LOW_QUOTA_DEFAULT, is_valid_low_quota
@@ -31,6 +32,9 @@ from agyswitcher.models import AccountQuotaInfo
 
 PROJECT_CONFIG_NAME = ".agyswitcher.toml"
 """Fichero de configuración de AgySwitcher dentro de un proyecto."""
+
+HANDOFF_FILE_NAME = "HANDOFF.md"
+"""Nombre del fichero markdown de traspaso entre sesiones."""
 
 LOW_QUOTA_PERCENT = LOW_QUOTA_DEFAULT
 """Porcentaje restante por defecto a partir del cual se avisa para guardar el estado a tiempo."""
@@ -44,8 +48,9 @@ DEFAULT_SAVE_PROMPT = (
 
 DEFAULT_RESUME_PROMPT = (
     "Continuamos el trabajo en una nueva sesión. Lee AGENTS.md, dev_mem/ESTADO.md, "
-    "dev_mem/TODO.md y el diario más reciente de dev_mem/. Resume en pocas líneas dónde "
-    "estamos y cuál es el siguiente paso, y espera mi confirmación antes de seguir."
+    "dev_mem/TODO.md, el diario más reciente de dev_mem/ y dev_mem/HANDOFF.md (o HANDOFF.md "
+    "si existe). Resume en pocas líneas dónde estamos y cuál es el siguiente paso, y espera mi "
+    "confirmación antes de seguir."
 )
 
 AGENT_POINTER_FILES: dict[str, str] = {
@@ -106,13 +111,15 @@ def _memory_section() -> str:
 El trabajo puede continuar en otra sesión, con otra cuenta o con otro agente. Para que
 nadie pierda el contexto:
 
-- **Al empezar una sesión:** lee `dev_mem/ESTADO.md`, `dev_mem/TODO.md` y el diario más
-  reciente (`dev_mem/AAAA-MM-DD.md`) antes de hacer nada.
+- **Al empezar una sesión:** lee `dev_mem/ESTADO.md`, `dev_mem/TODO.md`, el diario más
+  reciente (`dev_mem/AAAA-MM-DD.md`) y `dev_mem/HANDOFF.md` (o `HANDOFF.md` si existe) antes
+  de hacer nada.
 - **Durante el trabajo:** anota en el diario del día las decisiones, cambios y problemas.
 - **Al terminar una tarea, o cuando se pida "guardar estado":** actualiza
   - `dev_mem/ESTADO.md`: situación actual, último cambio verificado y siguientes pasos;
   - `dev_mem/TODO.md`: tareas pendientes con prioridad y estado;
-  - `dev_mem/AAAA-MM-DD.md`: diario de la sesión.
+  - `dev_mem/AAAA-MM-DD.md`: diario de la sesión;
+  - `dev_mem/HANDOFF.md`: si se prepara un traspaso de cuenta o sesión.
 - El estado debe bastar para que otra sesión continúe **sin contexto previo**.
 - No guardes secretos, tokens, contraseñas ni datos personales en `dev_mem/`.
 """
@@ -225,9 +232,9 @@ def _project_toml() -> str:
         f"resume_prompt = {_toml_string(DEFAULT_RESUME_PROMPT)}\n\n"
         "# Aviso de cuota baja: porcentaje restante (1-99) a partir del cual se avisa para\n"
         "# guardar el estado. Sin indicarlo se usa el valor global\n"
-        "# ('agyswitcher config low-quota'), por defecto 15.\n"
+        "# ('agyswitcher config low-quota'), por defecto 20.\n"
         "# [quota]\n"
-        "# low_percent = 15\n"
+        "# low_percent = 20\n"
     )
 
 
@@ -412,6 +419,75 @@ def load_handoff_prompts(start: Path) -> HandoffPrompts:
         ),
         source=config,
     )
+
+
+def handoff_file_path(root: Path) -> Path:
+    """Ruta del fichero de traspaso: dev_mem/HANDOFF.md si dev_mem/ existe, o HANDOFF.md en root."""
+    dev_mem = root / "dev_mem"
+    if dev_mem.is_dir():
+        return dev_mem / HANDOFF_FILE_NAME
+    return root / HANDOFF_FILE_NAME
+
+
+def write_handoff_file(
+    root: Path,
+    *,
+    prompts: HandoffPrompts | None = None,
+    account: str | None = None,
+    pool: str | None = None,
+    notes: str | None = None,
+    now: datetime | None = None,
+) -> Path:
+    """Escribe o actualiza el fichero HANDOFF.md en el proyecto.
+
+    Si existe dev_mem/, se guarda en dev_mem/HANDOFF.md; si no, en la raíz del proyecto.
+    El fichero contiene las instrucciones para que el siguiente agente retome el contexto
+    y las notas de traspaso.
+
+    Returns:
+        Ruta del fichero escrito.
+
+    Raises:
+        ProjectError: Si no se puede escribir el fichero.
+    """
+    path = handoff_file_path(root)
+    current_time = now or datetime.now(UTC)
+    active_prompts = prompts or load_handoff_prompts(root)
+
+    account_line = f"- **Cuenta saliente:** `{account}`\n" if account else ""
+    pool_line = f"- **Pool saliente:** `{pool}`\n" if pool else ""
+    notes_content = (
+        notes.strip()
+        if notes and notes.strip()
+        else "_(Sin notas adicionales. Lee ESTADO.md y TODO.md para ver el punto exacto de avance)_"
+    )
+
+    content = (
+        "# HANDOFF — Traspaso de Sesión\n\n"
+        f"**Fecha y hora:** {current_time.strftime('%Y-%m-%d %H:%M:%S UTC')}\n"
+        f"{account_line}"
+        f"{pool_line}\n"
+        "## Instrucción para el nuevo agente\n\n"
+        f"{active_prompts.resume}\n\n"
+        "## Contexto y reglas del proyecto\n\n"
+        "- Reglas e instrucciones comunes: `AGENTS.md`\n"
+        "- Estado operativo actual: `dev_mem/ESTADO.md`\n"
+        "- Tareas pendientes: `dev_mem/TODO.md`\n\n"
+        "## Notas de traspaso\n\n"
+        f"{notes_content}\n"
+    )
+
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp_path = path.with_suffix(".tmp")
+        tmp_path.write_text(content, encoding="utf-8", newline="\n")
+        tmp_path.replace(path)
+    except OSError as err:
+        raise ProjectError(
+            f"No se pudo escribir el fichero de traspaso '{path}': {err.strerror or err}."
+        ) from err
+
+    return path
 
 
 # ---------------------------------------------------------------------------

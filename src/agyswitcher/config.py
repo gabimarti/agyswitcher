@@ -25,7 +25,7 @@ from pathlib import Path
 
 from agyswitcher.models import Account
 
-LOW_QUOTA_DEFAULT = 15
+LOW_QUOTA_DEFAULT = 20
 """Umbral por defecto (porcentaje restante) del aviso de cuota baja."""
 
 LOW_QUOTA_MIN = 1
@@ -68,7 +68,7 @@ class Settings:
 
     low_quota_percent: int | None = None
     """Umbral global del aviso de cuota baja (None: el valor por defecto)."""
-    auto_copy: bool = True
+    auto_copy: bool = False
     """Copiar automáticamente al portapapeles las instrucciones de traspaso."""
 
     def to_dict(self) -> dict[str, object]:
@@ -86,7 +86,7 @@ class Settings:
         auto_copy = data.get("auto_copy")
         return cls(
             low_quota_percent=low if is_valid_low_quota(low) else None,
-            auto_copy=auto_copy if isinstance(auto_copy, bool) else True,
+            auto_copy=auto_copy if isinstance(auto_copy, bool) else False,
         )
 
 
