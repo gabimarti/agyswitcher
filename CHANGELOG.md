@@ -2,6 +2,14 @@
 
 Todos los cambios relevantes de AgySwitcher se documentan en este fichero.
 
+## [1.4.1] - 2026-11-23
+
+### Corregido
+
+- Web: se oculta el distintivo de versión dinámico en el botón del repositorio de GitHub de la
+  cabecera para evitar que la caché de sesión (`sessionStorage`) del tema muestre versiones
+  desfasadas a los visitantes habituales.
+
 ## [1.4.0] - 2026-11-23
 
 Comprobación automática de frescura de cuota al arrancar `run`, persistencia de traspaso
