@@ -6,7 +6,7 @@ Módulo: models.py
 Autor: Gabriel Marti
 Website & Contact: https://gabimarti.github.io/
 Fecha inicio: 2026-11-03
-Ultimo cambio: 2026-11-19
+Ultimo cambio: 2026-11-23
 
 Descripción: Modelos de datos de AgySwitcher.
 
@@ -51,6 +51,15 @@ def parse_utc(value: object) -> datetime | None:
 def is_valid_email(value: str) -> bool:
     """Indica si 'value' tiene formato de email admitido (sin espacios ni marcado)."""
     return bool(EMAIL_PATTERN.match(value))
+
+
+MODEL_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$")
+"""ID de modelo admitido: no empieza por '-' (no puede parecer una opción) ni lleva espacios."""
+
+
+def is_valid_model_id(value: str) -> bool:
+    """Indica si 'value' es un ID de modelo seguro para pasarlo a agy como argumento."""
+    return bool(MODEL_ID_PATTERN.match(value))
 
 
 @dataclass

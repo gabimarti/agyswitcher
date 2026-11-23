@@ -6,7 +6,7 @@ Módulo: ai_models.py
 Autor: Gabriel Marti
 Website & Contact: https://gabimarti.github.io/
 Fecha inicio: 2026-11-06
-Ultimo cambio: 2026-11-06
+Ultimo cambio: 2026-11-23
 
 Descripción: Catálogo, detección y gestión de modelos de IA de Antigravity.
 
@@ -21,6 +21,7 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
+from agyswitcher.models import is_valid_model_id
 from agyswitcher.runner import AgyNotFoundError, find_agy_executable, run_captured
 
 
@@ -204,10 +205,11 @@ def inject_preferred_model_args(
         preferred_model: ID del modelo preferido a inyectar (o None si no hay).
 
     Returns:
-        Nueva lista de argumentos (posiblemente con ``--model`` añadido).
+        Nueva lista de argumentos (posiblemente con ``--model`` añadido). Un ID que no cumple
+        ``MODEL_ID_PATTERN`` (por ejemplo, uno que empieza por '-') no se inyecta.
     """
     new_args = list(args)
-    if preferred_model is None or not preferred_model.strip():
+    if preferred_model is None or not is_valid_model_id(preferred_model.strip()):
         return new_args
 
     # Si ya se pasa --model o -m manualmente, no sobreescribir

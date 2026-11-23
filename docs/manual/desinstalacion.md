@@ -4,7 +4,9 @@
 
 Desinstala desde *Configuración → Aplicaciones → Aplicaciones instaladas → AgySwitcher*, o
 desde *Inicio → AgySwitcher → Desinstalar AgySwitcher*. Se borra la carpeta de instalación
-y se quita del `PATH` de tu usuario. Tus datos (ver abajo) se conservan.
+y se quita del `PATH` de tu usuario. También se borra la variable `AGYSWITCHER_AGY` si la
+creó el instalador (una que hubieras definido tú se conserva). Tus datos (ver abajo) se
+conservan.
 
 ## Versión portable
 

@@ -289,7 +289,8 @@ el global (ver [Continuidad](continuidad.md#aviso-de-cuota-baja)).
 
 Revisa en un solo paso que todo esté en orden y explica cómo arreglar lo que no lo esté:
 
-- `agy` en el `PATH` y su versión.
+- Qué `agy` se usa, de dónde sale (`AGYSWITCHER_AGY`, `PATH` o ruta de instalación) y
+  su versión.
 - Carpeta de datos, ajustes, cuentas registradas (y si alguna no tiene email) y estado.
 - Cuenta activa y si coincide con la sesión que `agy` tiene iniciada.
 - Antigüedad de los datos de cuota y cuentas agotadas cuyo reinicio ya pasó.

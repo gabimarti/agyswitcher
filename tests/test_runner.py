@@ -14,34 +14,194 @@ from unittest.mock import MagicMock
 import pytest
 
 from agyswitcher.runner import (
+    AGY_PATH_ENV,
+    AGY_SOURCE_ENV,
+    AGY_SOURCE_INSTALL,
+    AGY_SOURCE_PATH,
     AgyNotFoundError,
     RunnerError,
+    check_batch_args,
     find_agy_executable,
     find_running_agy_processes,
     kill_process_tree,
+    locate_agy,
     run_agy_process,
     run_captured,
     sanitize_line,
+    system_tool,
 )
 
 
-def test_find_agy_executable_success(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Verifica que find_agy_executable devuelve la ruta si agy.exe está en PATH."""
-    expected_path = r"C:\Users\User\AppData\Local\agy\bin\agy.exe"
-    monkeypatch.setattr("shutil.which", lambda name: expected_path if name == "agy" else None)
+def _make_exe(folder: Path, name: str = "agy.exe") -> Path:
+    folder.mkdir(parents=True, exist_ok=True)
+    exe = folder / name
+    exe.write_bytes(b"MZ")
+    if os.name != "nt":
+        exe.chmod(0o755)
+    return exe
 
-    result = find_agy_executable()
-    assert result == Path(expected_path).resolve()
+
+@pytest.fixture
+def agy_name() -> str:
+    return "agy.exe" if os.name == "nt" else "agy"
 
 
-def test_find_agy_executable_not_found(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_find_agy_executable_success(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, agy_name: str
+) -> None:
+    """Devuelve la ruta si agy está en una carpeta absoluta del PATH."""
+    exe = _make_exe(tmp_path / "bin", agy_name)
+    monkeypatch.setenv("PATH", str(tmp_path / "bin"))
+
+    location = locate_agy()
+    assert find_agy_executable() == exe.resolve()
+    assert location.source == AGY_SOURCE_PATH
+    assert location.warning is None
+
+
+def test_find_agy_executable_not_found(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Lanza AgyNotFoundError si agy no se encuentra en el PATH."""
-    monkeypatch.setattr("shutil.which", lambda _name: None)
+    monkeypatch.setenv("PATH", str(tmp_path / "vacio"))
 
     with pytest.raises(AgyNotFoundError) as exc_info:
         find_agy_executable()
 
     assert "No se encontró agy.exe en el PATH" in str(exc_info.value)
+    assert AGY_PATH_ENV in str(exc_info.value)
+
+
+def test_find_agy_ignores_current_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, agy_name: str
+) -> None:
+    """Un agy (o agy.cmd) en la carpeta actual nunca se usa, ni con '.' en el PATH (SEC3-01)."""
+    project = tmp_path / "proyecto"
+    _make_exe(project, agy_name)
+    _make_exe(project, "agy.cmd")
+    _make_exe(project, "agy.bat")
+    monkeypatch.chdir(project)
+    monkeypatch.setenv("PATH", os.pathsep.join([".", "", "bin", str(tmp_path / "vacio")]))
+
+    with pytest.raises(AgyNotFoundError):
+        find_agy_executable()
+
+
+def test_find_agy_prefers_real_agy_over_project_copy(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, agy_name: str
+) -> None:
+    """Con un agy plantado en el proyecto, se elige el del PATH."""
+    project = tmp_path / "proyecto"
+    _make_exe(project, agy_name)
+    real = _make_exe(tmp_path / "agy" / "bin", agy_name)
+    monkeypatch.chdir(project)
+    monkeypatch.setenv("PATH", os.pathsep.join([".", str(tmp_path / "agy" / "bin")]))
+
+    assert find_agy_executable() == real.resolve()
+
+
+def test_find_agy_ignores_batch_scripts_in_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """En el PATH solo vale agy.exe: un agy.cmd o agy.bat no se elige."""
+    _make_exe(tmp_path / "bin", "agy.cmd")
+    _make_exe(tmp_path / "bin", "agy.bat")
+    monkeypatch.setenv("PATH", str(tmp_path / "bin"))
+
+    with pytest.raises(AgyNotFoundError):
+        find_agy_executable()
+
+
+def test_find_agy_uses_env_variable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, agy_name: str
+) -> None:
+    """AGYSWITCHER_AGY con ruta absoluta existente tiene prioridad sobre el PATH."""
+    custom = _make_exe(tmp_path / "otra", "agy.cmd")
+    _make_exe(tmp_path / "bin", agy_name)
+    monkeypatch.setenv("PATH", str(tmp_path / "bin"))
+    monkeypatch.setenv(AGY_PATH_ENV, str(custom))
+
+    location = locate_agy()
+    assert location.path == custom.resolve()
+    assert location.source == AGY_SOURCE_ENV
+    assert location.warning is None
+
+
+@pytest.mark.parametrize("value", ["agy.exe", ".\\agy.exe", "no/existe/agy.exe"])
+def test_find_agy_env_variable_invalid_falls_back_with_warning(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, agy_name: str, value: str
+) -> None:
+    """Una AGYSWITCHER_AGY relativa o inexistente se ignora con aviso y se busca en el PATH."""
+    monkeypatch.chdir(tmp_path)
+    _make_exe(tmp_path, "agy.exe")  # Aunque exista en la carpeta actual, no se usa.
+    real = _make_exe(tmp_path / "bin", agy_name)
+    monkeypatch.setenv("PATH", str(tmp_path / "bin"))
+    monkeypatch.setenv(AGY_PATH_ENV, value)
+
+    location = locate_agy()
+    assert location.path == real.resolve()
+    assert location.warning is not None
+    assert AGY_PATH_ENV in location.warning
+
+
+def test_find_agy_env_variable_missing_file_and_no_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Variable desfasada y sin agy en el PATH: no encontrado."""
+    monkeypatch.setenv("PATH", str(tmp_path / "vacio"))
+    monkeypatch.setenv(AGY_PATH_ENV, str(tmp_path / "borrado" / "agy.exe"))
+
+    with pytest.raises(AgyNotFoundError):
+        find_agy_executable()
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Ruta de instalación de agy en Windows")
+def test_find_agy_falls_back_to_install_dir(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Sin agy en el PATH, se usa la ruta de instalación oficial de agy si existe."""
+    local = tmp_path / "Local"
+    installed = _make_exe(local / "agy" / "bin")
+    monkeypatch.setenv("LOCALAPPDATA", str(local))
+    monkeypatch.setenv("PATH", str(tmp_path / "vacio"))
+
+    location = locate_agy()
+    assert location.path == installed.resolve()
+    assert location.source == AGY_SOURCE_INSTALL
+
+
+@pytest.mark.parametrize("arg", ["a&calc", "x|y", "50%", 'say "hi"', "a^b", "a<b", "l1\nl2"])
+def test_check_batch_args_rejects_cmd_metacharacters(arg: str) -> None:
+    """Con un .cmd/.bat, los metacaracteres de cmd.exe se rechazan."""
+    with pytest.raises(RunnerError):
+        check_batch_args(Path("agy.cmd"), ["--prompt", arg])
+    with pytest.raises(RunnerError):
+        check_batch_args("C:/x/AGY.BAT", [arg])
+
+
+def test_check_batch_args_allows_exe_and_safe_args() -> None:
+    """Con un .exe no se comprueba nada; con un .cmd se aceptan argumentos normales."""
+    check_batch_args(Path("agy.exe"), ["a&b", "50%"])
+    check_batch_args(Path("agy.cmd"), ["--model", "gemini-3.8-flash-high", "-p", "/usage"])
+
+
+def test_run_agy_process_rejects_unsafe_args_for_batch(tmp_path: Path) -> None:
+    """run_agy_process no lanza un .cmd con argumentos peligrosos."""
+    script = _make_exe(tmp_path, "agy.cmd")
+    with pytest.raises(RunnerError):
+        run_agy_process(["& calc"], executable_path=script, echo_output=False)
+
+
+def test_run_captured_rejects_unsafe_args_for_batch(tmp_path: Path) -> None:
+    """run_captured tampoco."""
+    script = _make_exe(tmp_path, "agy.cmd")
+    with pytest.raises(RunnerError):
+        run_captured([str(script), "x|y"], timeout=5)
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Utilidades de System32")
+def test_system_tool_uses_system32(monkeypatch: pytest.MonkeyPatch) -> None:
+    """tasklist/taskkill se invocan por ruta absoluta en System32."""
+    monkeypatch.setenv("SYSTEMROOT", "C:\\Windows")
+    assert system_tool("tasklist.exe") == str(Path("C:\\Windows") / "System32" / "tasklist.exe")
 
 
 def test_sanitize_bearer_token() -> None:
@@ -134,9 +294,9 @@ def test_run_agy_process_non_zero_exit() -> None:
     assert exit_code == 42
 
 
-def test_run_agy_process_not_found(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_run_agy_process_not_found(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Lanza AgyNotFoundError si no se proporciona ruta y agy no está en PATH."""
-    monkeypatch.setattr("shutil.which", lambda _name: None)
+    monkeypatch.setenv("PATH", str(tmp_path / "vacio"))
     with pytest.raises(AgyNotFoundError):
         run_agy_process(["version"], echo_output=False)
 
@@ -188,7 +348,8 @@ def test_kill_process_tree(monkeypatch: pytest.MonkeyPatch) -> None:
     kill_process_tree(9999)
     run_mock.assert_called_once()
     called_cmd = run_mock.call_args[0][0]
-    assert called_cmd == ["taskkill", "/T", "/F", "/PID", "9999"]
+    assert called_cmd == [system_tool("taskkill.exe"), "/T", "/F", "/PID", "9999"]
+    assert Path(called_cmd[0]).is_absolute()
 
 
 # ---------------------------------------------------------------------------
@@ -272,6 +433,7 @@ def test_find_running_agy_processes_parses_tasklist(monkeypatch: pytest.MonkeyPa
     monkeypatch.setattr("agyswitcher.runner.os.name", "nt")
 
     assert find_running_agy_processes() == ["Antigravity IDE.exe", "agy.exe"]
+    assert run_mock.call_args.args[0][0] == system_tool("tasklist.exe")
     kwargs = run_mock.call_args.kwargs
     assert kwargs["timeout"] == 10.0
     assert kwargs["stdin"] is subprocess.DEVNULL

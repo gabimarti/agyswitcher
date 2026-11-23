@@ -34,6 +34,10 @@ El instalador:
 
 - instala AgySwitcher solo para tu usuario en `%LOCALAPPDATA%\Programs\AgySwitcher`;
 - añade esa carpeta al `PATH` de tu usuario (por eso hace falta una consola nueva);
+- busca Antigravity CLI (`agy.exe`) y guarda su ruta en la variable de usuario
+  `AGYSWITCHER_AGY`, para que AgySwitcher use siempre ese agy. Si ya tenías esa variable con
+  otro valor, la respeta. Si agy no está instalado todavía, no pasa nada: AgySwitcher lo
+  buscará en el `PATH`;
 - copia el manual y los tutoriales en la carpeta `docs` de la instalación y crea accesos en
   el menú Inicio (*AgySwitcher*);
 - registra un desinstalador en *Configuración → Aplicaciones*.

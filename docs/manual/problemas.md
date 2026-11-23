@@ -83,7 +83,17 @@ abiertas no lo ven. Abre una consola nueva.
 
 **«No se encontró agy.exe».**
 Antigravity CLI no está en el `PATH`. Comprueba que `agy --help` funciona en una consola
-nueva.
+nueva. Por seguridad, AgySwitcher solo usa un `agy.exe` de una carpeta del `PATH` (o de la
+ruta de instalación de Antigravity CLI): nunca uno que esté en la carpeta del proyecto, ni
+un script `agy.cmd` o `agy.bat`. Si tu agy está en otra ruta, indícala completa en la
+variable de entorno `AGYSWITCHER_AGY` (por ejemplo, `C:\Herramientas\agy\agy.exe`) y abre
+una consola nueva.
+
+**Aviso «AGYSWITCHER_AGY no apunta a un ejecutable válido».**
+El instalador guarda en esa variable dónde está agy. Si después reinstalaste agy en otra
+carpeta o lo desinstalaste, la ruta ya no vale: AgySwitcher lo busca entonces en el `PATH`.
+Para quitar el aviso, vuelve a ejecutar el instalador de AgySwitcher (actualiza la variable)
+o corrígela tú. `agyswitcher doctor` muestra qué agy se usa y de dónde sale.
 
 **`agyswitcher` no se reconoce como comando (instalación desde el código fuente).**
 Activa el entorno virtual (`.\.venv\Scripts\Activate.ps1`) en esa consola, o usa la ruta

@@ -18,7 +18,7 @@ from agyswitcher.config import (
     save_accounts,
     save_settings,
 )
-from agyswitcher.models import Account, AccountQuotaInfo, AppState
+from agyswitcher.models import Account, AccountQuotaInfo, AppState, is_valid_model_id
 from agyswitcher.state import StateError, load_state, save_state
 
 # ---------------------------------------------------------------------------
@@ -433,3 +433,16 @@ def test_load_accounts_rejects_non_object_json(config_file: Path) -> None:
     config_file.write_text("[1, 2]", encoding="utf-8")
     with pytest.raises(ConfigError):
         load_accounts(config_file)
+
+
+@pytest.mark.parametrize(
+    "model_id",
+    ["gemini-3.8-flash-high", "claude-opus-4-6-thinking", "gpt-oss-120b-medium", "org/model:v1.2"],
+)
+def test_is_valid_model_id_accepts_real_ids(model_id: str) -> None:
+    assert is_valid_model_id(model_id)
+
+
+@pytest.mark.parametrize("model_id", ["", "-x", "--model", "a b", "a&b", 'a"b', "a%b", "x" * 129])
+def test_is_valid_model_id_rejects_unsafe_ids(model_id: str) -> None:
+    assert not is_valid_model_id(model_id)

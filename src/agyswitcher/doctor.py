@@ -5,7 +5,7 @@ Módulo: doctor.py
 Autor: Gabriel Marti
 Website & Contact: https://gabimarti.github.io/
 Fecha inicio: 2026-11-20
-Ultimo cambio: 2026-11-20
+Ultimo cambio: 2026-11-23
 Descripción: Diagnóstico de la instalación ('agyswitcher doctor').
 
 Reúne en una lista de comprobaciones el estado de agy, de los datos de AgySwitcher, de la
@@ -42,9 +42,11 @@ from agyswitcher.project import (
 )
 from agyswitcher.rotator import quota_data_time
 from agyswitcher.runner import (
+    AGY_PATH_ENV,
     AgyNotFoundError,
-    find_agy_executable,
+    RunnerError,
     find_running_agy_processes,
+    locate_agy,
     run_captured,
 )
 from agyswitcher.state import StateError, default_state_path, load_state
@@ -134,16 +136,19 @@ def check_versions() -> Check:
 
 
 def check_agy(version_timeout: float = AGY_VERSION_TIMEOUT) -> Check:
-    """agy en el PATH y su versión ('agy --version', no consume cuota)."""
+    """agy localizado de forma segura, de dónde sale y su versión ('agy --version', no consume cuota)."""
     try:
-        exe = find_agy_executable()
+        location = locate_agy()
     except AgyNotFoundError:
         return Check(
             "Antigravity CLI (agy)",
             CheckStatus.FAIL,
             "agy no está en el PATH.",
-            "Instala Antigravity CLI o añade su carpeta al PATH y abre una consola nueva.",
+            "Instala Antigravity CLI o añade su carpeta al PATH y abre una consola nueva. "
+            f"Si está en otra ruta, indícala completa en la variable {AGY_PATH_ENV}.",
         )
+    exe = location.path
+    origin = f"origen: {location.source}"
     try:
         result = run_captured([str(exe), "--version"], timeout=version_timeout)
     except subprocess.TimeoutExpired:
@@ -152,17 +157,31 @@ def check_agy(version_timeout: float = AGY_VERSION_TIMEOUT) -> Check:
             CheckStatus.WARN,
             f"{display_path(exe)} no respondió a --version en {version_timeout:.0f} s.",
         )
-    except OSError as err:
+    except (OSError, RunnerError) as err:
+        reason = err.strerror if isinstance(err, OSError) and err.strerror else err
         return Check(
             "Antigravity CLI (agy)",
             CheckStatus.WARN,
-            f"No se pudo ejecutar {display_path(exe)}: {err.strerror or err}.",
+            f"No se pudo ejecutar {display_path(exe)}: {reason}.",
         )
     lines = (result.stdout or "").strip().splitlines()
     version = lines[0].strip()[:40] if result.returncode == 0 and lines else "desconocida"
-    return Check(
-        "Antigravity CLI (agy)", CheckStatus.OK, f"versión {version} · {display_path(exe)}"
-    )
+    detail = f"versión {version} · {display_path(exe)} · {origin}"
+    if location.warning:
+        return Check(
+            "Antigravity CLI (agy)",
+            CheckStatus.WARN,
+            f"{detail}. {location.warning}",
+            f"Corrige o borra la variable {AGY_PATH_ENV} (reinstalar AgySwitcher la actualiza).",
+        )
+    if exe.suffix.lower() != ".exe" and os.name == "nt":
+        return Check(
+            "Antigravity CLI (agy)",
+            CheckStatus.WARN,
+            f"{detail}. agy no es un .exe: se ejecuta a través de cmd.exe.",
+            f"Indica en {AGY_PATH_ENV} la ruta del agy.exe real si es posible.",
+        )
+    return Check("Antigravity CLI (agy)", CheckStatus.OK, detail)
 
 
 def check_data_dir() -> Check:

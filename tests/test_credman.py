@@ -464,6 +464,7 @@ def test_non_windows_platform_behavior(monkeypatch: pytest.MonkeyPatch) -> None:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.real_credman
 @pytest.mark.skipif(sys.platform != "win32", reason="Requiere Windows")
 def test_real_win32_credential_roundtrip() -> None:
     """Valida un ciclo real de escritura, lectura, enumeración y borrado en Windows."""

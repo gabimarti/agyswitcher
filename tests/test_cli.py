@@ -12,6 +12,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from typer.testing import CliRunner
 
+from agyswitcher import cli as cli_module
 from agyswitcher.cli import app
 from agyswitcher.config import load_accounts
 from agyswitcher.models import AccountQuotaInfo
@@ -1338,6 +1339,32 @@ def test_run_injects_preferred_model(mock_process: MagicMock) -> None:
     mock_process.assert_called_once()
     passed_args = mock_process.call_args[1]["args"]
     assert passed_args == ["--model", "gemini-3.8-flash-high", "tarea-prueba"]
+
+
+@pytest.mark.parametrize("model_id", ["--dangerous", "a&calc", "con espacio", "-x"])
+def test_models_set_rejects_invalid_model_id(model_id: str) -> None:
+    """models --set rechaza IDs que no son seguros como argumento de agy (SEC3-10)."""
+    runner.invoke(app, ["add", "cuenta-1"])
+    result = runner.invoke(app, ["models", f"--set={model_id}"])
+    assert result.exit_code == 1
+    assert "no es un ID de modelo válido" in result.output
+    assert cli_module.load_accounts()["cuenta-1"].preferred_models == {}
+
+
+@patch("agyswitcher.cli.run_agy_process")
+def test_run_ignores_invalid_stored_preferred_model(mock_process: MagicMock) -> None:
+    """Un modelo preferido inválido guardado a mano en config.json no se pasa a agy."""
+    runner.invoke(app, ["add", "cuenta-1"])
+    accounts = cli_module.load_accounts()
+    accounts["cuenta-1"].set_preferred_model("gemini", "--evil")
+    cli_module.save_accounts(accounts)
+
+    mock_process.return_value = 0
+    result = runner.invoke(app, ["run", "--", "tarea-prueba"])
+
+    assert result.exit_code == 0
+    assert "ignorado" in result.output
+    assert mock_process.call_args[1]["args"] == ["tarea-prueba"]
 
 
 @patch("agyswitcher.cli.run_agy_process")

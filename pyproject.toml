@@ -107,3 +107,6 @@ ignore_missing_imports = true
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-v --tb=short"
+markers = [
+    "real_credman: usa el Administrador de credenciales real de Windows (solo targets de prueba)",
+]

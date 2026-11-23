@@ -42,6 +42,8 @@ flowchart LR
 - `Ctrl+C` y cierre limpio de todo el árbol de procesos en Windows.
 - Las consultas a `agy` (cuota, modelos, versión) tienen un tiempo máximo garantizado y nunca
   esperan entrada del teclado.
+- Solo se ejecuta el `agy.exe` instalado (desde el `PATH`, la ruta de instalación o la variable
+  `AGYSWITCHER_AGY` que crea el instalador), nunca uno que esté en la carpeta del proyecto.
 
 ### Cuota y cambio de cuenta ✅
 
@@ -91,6 +93,9 @@ flowchart LR
   [Varios agentes y proveedores](manual/multiagente.md)), construida con Zensical.
 - Revisión de seguridad del código y de la integración continua (acciones fijadas por SHA y
   Dependabot).
+- Correcciones de la tercera revisión de seguridad, por fases: la primera (ejecución segura de
+  `agy`) ya está hecha; quedan la integridad de los slots de sesión y el tratamiento de la
+  configuración de proyectos de terceros.
 - Licencia GPL-3.0-or-later.
 
 ---

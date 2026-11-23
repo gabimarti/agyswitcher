@@ -17,7 +17,7 @@ el agotamiento de cuota (rate limit) de forma transparente para el usuario.
 | Principio | Descripción |
 | :--- | :--- |
 | **No invasivo** | No modifica los archivos internos de `agy`, ni accede, descifra ni exporta tokens OAuth. |
-| **Windows nativo** | Usa `pathlib.Path`, `shutil.which` y APIs de consola de Windows en lugar de construcciones POSIX. |
+| **Windows nativo** | Usa `pathlib.Path`, rutas absolutas a los ejecutables y APIs de consola de Windows en lugar de construcciones POSIX. |
 | **Seguro por diseño** | Cualquier dato proveniente de procesos hijos (`agy`) se trata como no confiable. Los patrones sensibles se redactan antes de cualquier log. |
 | **Transparente** | El usuario siempre sabe qué cuenta está activa. Las rotaciones automáticas se notifican explícitamente; las manuales requieren confirmación. |
 | **Sin privilegios especiales** | No requiere ejecución como Administrador ni modo Developer de Windows para sus operaciones núcleo. |
@@ -211,27 +211,29 @@ sección. Los ajustes inválidos se ignoran (se usan los de por defecto).
 
 ### 5.1 Resolución del ejecutable `agy` en Windows
 
-```python
-import shutil
+`runner.locate_agy()` devuelve la ruta de agy y su origen, en este orden:
 
-def find_agy_executable() -> Path:
-    """Localiza agy.exe en el PATH del sistema."""
-    exe = shutil.which("agy")
-    if exe is None:
-        raise FileNotFoundError(
-            "No se encontró agy.exe en el PATH. "
-            "Verifica que Antigravity CLI esté instalado."
-        )
-    return Path(exe)
-```
+1. La variable `AGYSWITCHER_AGY`, si contiene una ruta **absoluta** a un fichero existente.
+   La fija el instalador; también sirve para pruebas con un agy falso. Si su valor no vale
+   (ruta relativa o fichero borrado), se sigue buscando y se devuelve un aviso que `run` y
+   `doctor` muestran.
+2. Las carpetas **absolutas** del `PATH`, buscando solo `agy.exe`.
+3. La ruta de instalación oficial, `%LOCALAPPDATA%\agy\bin\agy.exe`.
+
+No se usa `shutil.which`: en Windows antepone la carpeta actual a la búsqueda y prueba todas
+las extensiones de `PATHEXT`, de modo que un `agy.cmd` dentro del proyecto en el que se
+trabaja se ejecutaría en lugar del agy real. Por la misma razón, `tasklist.exe` y
+`taskkill.exe` se invocan por su ruta absoluta en `System32` (`runner.system_tool`).
 
 `agy` en Windows es un **binario nativo** (`agy.exe`, no `.cmd`):
-`C:\Users\<User>\AppData\Local\agy\bin\agy.exe` (v1.4.12 confirmado en este sistema).
+`C:\Users\<User>\AppData\Local\agy\bin\agy.exe`.
 
 > [!NOTE]
-> No se requiere `shell=True`. `shutil.which("agy")` resuelve correctamente
-> `agy.exe` en Windows respetando `PATHEXT`. El uso de `shell=True` está
-> **prohibido** salvo necesidad justificada documentada (ver `AGENTS.md`).
+> No se usa `shell=True`. Si `AGYSWITCHER_AGY` apunta a un script `.cmd`/`.bat` (solo en
+> pruebas), `runner.check_batch_args` rechaza los argumentos con caracteres que `cmd.exe`
+> interpretaría (`& | < > ^ % "` y saltos de línea), porque Python no los escapa para
+> `cmd.exe`. Los ID de modelo que se inyectan con `--model` se validan con
+> `models.MODEL_ID_PATTERN` (no pueden empezar por `-`).
 
 ### 5.2 Streaming de salida y sanitización
 

@@ -6,7 +6,7 @@ Módulo: cli.py
 Autor: Gabriel Marti
 Website & Contact: https://gabimarti.github.io/
 Fecha inicio: 2026-11-03
-Ultimo cambio: 2026-11-20
+Ultimo cambio: 2026-11-23
 
 Descripción: Entry point de la interfaz de línea de comandos de AgySwitcher.
 """
@@ -57,7 +57,13 @@ from agyswitcher.credman import (
 )
 from agyswitcher.dashboard import build_dashboard_view
 from agyswitcher.doctor import CheckStatus, DoctorOptions, run_doctor, worst_status
-from agyswitcher.models import Account, AccountQuotaInfo, AppState, is_valid_email
+from agyswitcher.models import (
+    Account,
+    AccountQuotaInfo,
+    AppState,
+    is_valid_email,
+    is_valid_model_id,
+)
 from agyswitcher.project import (
     AGENT_POINTER_FILES,
     DEFAULT_AGENTS,
@@ -83,6 +89,7 @@ from agyswitcher.runner import (
     AgyNotFoundError,
     RunnerError,
     find_running_agy_processes,
+    locate_agy,
     run_agy_process,
 )
 from agyswitcher.session import (
@@ -2378,6 +2385,15 @@ def models(
     # Opción: fijar modelo preferido
     if set_model:
         model_id = set_model.strip()
+        if not is_valid_model_id(model_id):
+            typer.secho(
+                f"Error: '{model_id}' no es un ID de modelo válido. Usa letras, números, '.', "
+                "'_', ':', '/' o '-', sin espacios y sin empezar por '-' "
+                "(consulta los disponibles con 'agyswitcher models').",
+                fg=typer.colors.RED,
+                err=True,
+            )
+            raise typer.Exit(code=1)
         pool = classify_model_pool(model_id)
         target_acc.set_preferred_model(pool, model_id)
         try:
@@ -2493,7 +2509,13 @@ def run(
     active_acc = accounts.get(state.active)
     if active_acc is not None:
         preferred = active_acc.get_preferred_model(state.active_model_group)
-        if preferred:
+        if preferred and not is_valid_model_id(preferred.strip()):
+            console.print(
+                f"[yellow]Modelo preferido '{escape(preferred)}' ignorado: no es un ID válido. "
+                "Cámbialo con 'agyswitcher models --set <id>' o bórralo con "
+                "'agyswitcher models --clear'.[/yellow]"
+            )
+        elif preferred:
             effective_args = inject_preferred_model_args(effective_args, preferred)
 
     # Actualizar la cuota en vivo si los datos guardados están obsoletos (> 3 min)
@@ -2546,6 +2568,12 @@ def run(
         while not stop_following.wait(_LOG_POLL_INTERVAL):
             for log_line in follower.poll():
                 _on_log_line(log_line)
+
+    # Aviso si AGYSWITCHER_AGY está desfasada (la búsqueda sigue en el PATH de forma segura).
+    with contextlib.suppress(AgyNotFoundError):
+        agy_warning = locate_agy().warning
+        if agy_warning:
+            console.print(f"[yellow]{escape(agy_warning)}[/yellow]")
 
     follow_thread = threading.Thread(target=_follow_logs, name="agy-log-follower", daemon=True)
     follow_thread.start()

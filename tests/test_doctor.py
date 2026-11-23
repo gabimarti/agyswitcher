@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -31,7 +32,7 @@ from agyswitcher.doctor import (
     worst_status,
 )
 from agyswitcher.models import Account, AccountQuotaInfo, AppState
-from agyswitcher.runner import AgyNotFoundError
+from agyswitcher.runner import AGY_SOURCE_ENV, AGY_SOURCE_PATH, AgyLocation, AgyNotFoundError
 from agyswitcher.state import save_state
 
 NOW = datetime(2026, 11, 20, 12, 0, tzinfo=UTC)
@@ -49,10 +50,10 @@ def _accounts() -> dict[str, Account]:
 def no_agy(monkeypatch: pytest.MonkeyPatch) -> None:
     """agy no instalado: ninguna comprobación lanza procesos reales."""
 
-    def _missing() -> Path:
+    def _missing() -> AgyLocation:
         raise AgyNotFoundError("no agy")
 
-    monkeypatch.setattr(doctor, "find_agy_executable", _missing)
+    monkeypatch.setattr(doctor, "locate_agy", _missing)
 
 
 # ---------------------------------------------------------------------------
@@ -94,7 +95,7 @@ def test_check_agy_missing_is_error(no_agy: None) -> None:
 
 def test_check_agy_reports_version(monkeypatch: pytest.MonkeyPatch) -> None:
     exe = Path.home() / "agy" / "agy.exe"
-    monkeypatch.setattr(doctor, "find_agy_executable", lambda: exe)
+    monkeypatch.setattr(doctor, "locate_agy", lambda: AgyLocation(exe, AGY_SOURCE_PATH))
     monkeypatch.setattr(
         doctor,
         "run_captured",
@@ -107,12 +108,43 @@ def test_check_agy_reports_version(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_check_agy_timeout_is_warning(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(doctor, "find_agy_executable", lambda: Path("agy.exe"))
+    monkeypatch.setattr(doctor, "locate_agy", lambda: AgyLocation(Path("agy.exe"), AGY_SOURCE_PATH))
 
     def _timeout(cmd: list[str], timeout: float) -> subprocess.CompletedProcess[str]:
         raise subprocess.TimeoutExpired(cmd, timeout)
 
     monkeypatch.setattr(doctor, "run_captured", _timeout)
+    assert check_agy().status is CheckStatus.WARN
+
+
+def _fake_version(cmd: list[str], timeout: float) -> subprocess.CompletedProcess[str]:
+    return subprocess.CompletedProcess(cmd, 0, "1.5.13\n", "")
+
+
+def test_check_agy_shows_origin(monkeypatch: pytest.MonkeyPatch) -> None:
+    exe = Path.home() / "agy" / "agy.exe"
+    monkeypatch.setattr(doctor, "locate_agy", lambda: AgyLocation(exe, AGY_SOURCE_ENV))
+    monkeypatch.setattr(doctor, "run_captured", _fake_version)
+    check = check_agy()
+    assert check.status is CheckStatus.OK
+    assert f"origen: {AGY_SOURCE_ENV}" in check.detail
+
+
+def test_check_agy_stale_variable_is_warning(monkeypatch: pytest.MonkeyPatch) -> None:
+    exe = Path.home() / "agy" / "agy.exe"
+    location = AgyLocation(exe, AGY_SOURCE_PATH, warning="AGYSWITCHER_AGY no apunta a nada")
+    monkeypatch.setattr(doctor, "locate_agy", lambda: location)
+    monkeypatch.setattr(doctor, "run_captured", _fake_version)
+    check = check_agy()
+    assert check.status is CheckStatus.WARN
+    assert "AGYSWITCHER_AGY" in check.detail
+
+
+@pytest.mark.skipif(os.name != "nt", reason="La extensión .exe solo importa en Windows")
+def test_check_agy_batch_script_is_warning(monkeypatch: pytest.MonkeyPatch) -> None:
+    exe = Path.home() / "agy" / "agy.cmd"
+    monkeypatch.setattr(doctor, "locate_agy", lambda: AgyLocation(exe, AGY_SOURCE_ENV))
+    monkeypatch.setattr(doctor, "run_captured", _fake_version)
     assert check_agy().status is CheckStatus.WARN
 
 
@@ -264,7 +296,7 @@ def test_check_project_reports_project_threshold_and_errors(tmp_path: Path) -> N
 
 def test_run_doctor_full_healthy_setup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     exe = Path.home() / "agy.exe"
-    monkeypatch.setattr(doctor, "find_agy_executable", lambda: exe)
+    monkeypatch.setattr(doctor, "locate_agy", lambda: AgyLocation(exe, AGY_SOURCE_PATH))
     monkeypatch.setattr(
         doctor,
         "run_captured",

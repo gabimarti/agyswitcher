@@ -6,7 +6,7 @@ Módulo: runner.py
 Autor: Gabriel Marti
 Website & Contact: https://gabimarti.github.io/
 Fecha inicio: 2026-11-03
-Ultimo cambio: 2026-11-19
+Ultimo cambio: 2026-11-23
 
 Descripción: Módulo runner para la ejecución segura de Antigravity CLI (agy) en Windows.
 
@@ -20,11 +20,11 @@ import contextlib
 import csv
 import os
 import re
-import shutil
 import signal
 import subprocess
 import sys
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 
 
@@ -63,22 +63,134 @@ def sanitize_line(line: str) -> str:
     return sanitized
 
 
-def find_agy_executable() -> Path:
-    """Localiza el ejecutable agy.exe en el PATH del sistema de Windows.
+AGY_PATH_ENV = "AGYSWITCHER_AGY"
+"""Variable de entorno con la ruta absoluta de agy (la fija el instalador; útil en pruebas)."""
 
-    Returns:
-        Ruta absoluta al binario agy.exe.
+AGY_SOURCE_ENV = AGY_PATH_ENV
+AGY_SOURCE_PATH = "PATH"
+AGY_SOURCE_INSTALL = "ruta de instalación"
+
+_BATCH_SUFFIXES = frozenset({".bat", ".cmd"})
+_BATCH_UNSAFE_CHARS = frozenset('&|<>^%"\r\n')
+"""Caracteres que cmd.exe interpreta aunque el argumento vaya entre comillas."""
+
+
+@dataclass(frozen=True)
+class AgyLocation:
+    """Ejecutable de agy encontrado y de dónde sale."""
+
+    path: Path
+    source: str
+    """AGY_SOURCE_ENV, AGY_SOURCE_PATH o AGY_SOURCE_INSTALL."""
+    warning: str | None = None
+    """Aviso si AGYSWITCHER_AGY tiene un valor que no se pudo usar."""
+
+
+def _agy_exe_name() -> str:
+    return "agy.exe" if os.name == "nt" else "agy"
+
+
+def _is_executable_file(path: Path) -> bool:
+    try:
+        return path.is_file() and (os.name == "nt" or os.access(path, os.X_OK))
+    except OSError:
+        return False
+
+
+def _safe_path_dirs(path_value: str) -> list[Path]:
+    """Carpetas absolutas del PATH, sin entradas vacías ni relativas (como '.' o 'bin')."""
+    dirs: list[Path] = []
+    for entry in path_value.split(os.pathsep):
+        cleaned = os.path.expandvars(entry.strip().strip('"'))
+        if not cleaned:
+            continue
+        candidate = Path(cleaned)
+        if candidate.is_absolute():
+            dirs.append(candidate)
+    return dirs
+
+
+def _install_dir_candidate() -> Path | None:
+    """Ruta en la que instala agy su instalador oficial (%LOCALAPPDATA%/agy/bin/agy.exe)."""
+    local = os.environ.get("LOCALAPPDATA", "").strip()
+    if os.name != "nt" or not local or not Path(local).is_absolute():
+        return None
+    return Path(local) / "agy" / "bin" / "agy.exe"
+
+
+def locate_agy() -> AgyLocation:
+    """Localiza agy sin buscar nunca en la carpeta actual.
+
+    Orden: la variable AGYSWITCHER_AGY (ruta absoluta a un fichero existente), las carpetas
+    absolutas del PATH (solo ``agy.exe``, no scripts ``.cmd``/``.bat``) y la ruta de
+    instalación oficial. A diferencia de ``shutil.which``, no se mira la carpeta actual:
+    un proyecto con un ``agy.cmd`` propio no puede hacerse pasar por agy.
 
     Raises:
-        AgyNotFoundError: Si agy no se encuentra en el PATH.
+        AgyNotFoundError: Si no se encuentra agy.
     """
-    exe = shutil.which("agy")
-    if exe is None:
-        raise AgyNotFoundError(
-            "No se encontró agy.exe en el PATH. "
-            "Verifica que Antigravity CLI esté instalado en el sistema."
+    warning: str | None = None
+    custom = os.environ.get(AGY_PATH_ENV, "").strip().strip('"')
+    if custom:
+        custom_path = Path(custom)
+        if custom_path.is_absolute() and _is_executable_file(custom_path):
+            return AgyLocation(custom_path.resolve(), AGY_SOURCE_ENV)
+        warning = (
+            f"{AGY_PATH_ENV} no apunta a un ejecutable válido ({custom}); "
+            "se busca agy en el PATH. Revisa la instalación con 'agyswitcher doctor'."
         )
-    return Path(exe).resolve()
+
+    name = _agy_exe_name()
+    for folder in _safe_path_dirs(os.environ.get("PATH", "")):
+        candidate = folder / name
+        if _is_executable_file(candidate):
+            return AgyLocation(candidate.resolve(), AGY_SOURCE_PATH, warning)
+
+    installed = _install_dir_candidate()
+    if installed is not None and _is_executable_file(installed):
+        return AgyLocation(installed.resolve(), AGY_SOURCE_INSTALL, warning)
+
+    raise AgyNotFoundError(
+        "No se encontró agy.exe en el PATH. "
+        "Verifica que Antigravity CLI esté instalado en el sistema "
+        f"o indica su ruta completa en la variable {AGY_PATH_ENV}."
+    )
+
+
+def find_agy_executable() -> Path:
+    """Ruta absoluta del ejecutable de agy (ver 'locate_agy').
+
+    Raises:
+        AgyNotFoundError: Si agy no se encuentra.
+    """
+    return locate_agy().path
+
+
+def system_tool(name: str) -> str:
+    """Ruta absoluta de una utilidad de Windows en System32 (evita la búsqueda en la carpeta actual)."""
+    if os.name != "nt":
+        return name
+    root = os.environ.get("SYSTEMROOT", "").strip() or r"C:\Windows"
+    return str(Path(root) / "System32" / name)
+
+
+def check_batch_args(executable: str | Path, args: Sequence[str]) -> None:
+    """Rechaza argumentos peligrosos si el ejecutable es un script de cmd.exe.
+
+    Un ``.cmd``/``.bat`` se ejecuta a través de cmd.exe, que interpreta ``&``, ``|``, ``%``...
+    aunque Python ponga comillas. Con un ``.exe`` no se comprueba nada.
+
+    Raises:
+        RunnerError: Si algún argumento contiene caracteres que cmd.exe interpretaría.
+    """
+    if Path(str(executable)).suffix.lower() not in _BATCH_SUFFIXES:
+        return
+    for arg in args:
+        if any(ch in _BATCH_UNSAFE_CHARS for ch in arg):
+            raise RunnerError(
+                "agy es un script de cmd.exe y un argumento contiene caracteres especiales "
+                '(& | < > ^ % " o saltos de línea); no se ejecuta por seguridad.'
+            )
 
 
 AGY_PROCESS_NAMES = frozenset({"agy.exe", "antigravity.exe", "antigravity ide.exe"})
@@ -99,7 +211,7 @@ def find_running_agy_processes(timeout: float = 10.0) -> list[str] | None:
         return []
     try:
         res = subprocess.run(
-            ["tasklist", "/FO", "CSV", "/NH"],
+            [system_tool("tasklist.exe"), "/FO", "CSV", "/NH"],
             check=False,
             capture_output=True,
             text=True,
@@ -127,7 +239,7 @@ def kill_process_tree(pid: int) -> None:
     if os.name == "nt":
         with contextlib.suppress(subprocess.SubprocessError, OSError):
             subprocess.run(
-                ["taskkill", "/T", "/F", "/PID", str(pid)],
+                [system_tool("taskkill.exe"), "/T", "/F", "/PID", str(pid)],
                 check=False,
                 capture_output=True,
                 timeout=5.0,
@@ -162,7 +274,10 @@ def run_captured(
     Raises:
         subprocess.TimeoutExpired: Si el comando excede ``timeout`` (el árbol ya está terminado).
         OSError: Si el proceso no se puede lanzar.
+        RunnerError: Si el ejecutable es un script ``.cmd``/``.bat`` y algún argumento no es seguro.
     """
+    if cmd:
+        check_batch_args(cmd[0], cmd[1:])
     creationflags = subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0
     proc = subprocess.Popen(
         cmd,
@@ -238,6 +353,7 @@ def run_agy_process(
         Las excepciones lanzadas por 'on_line' se propagan sin envolver, tras terminar el hijo.
     """
     exe = executable_path if executable_path is not None else find_agy_executable()
+    check_batch_args(exe, args)
     cmd = [str(exe), *args]
 
     creationflags = 0

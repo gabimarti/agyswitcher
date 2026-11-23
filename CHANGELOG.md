@@ -2,6 +2,23 @@
 
 Todos los cambios relevantes de AgySwitcher se documentan en este fichero.
 
+## [Sin publicar]
+
+### Seguridad
+
+- AgySwitcher ya no puede ejecutar por error un `agy` que esté en la carpeta del proyecto:
+  solo usa un `agy.exe` de las carpetas del `PATH` o de la ruta de instalación de Antigravity
+  CLI, y las utilidades de Windows (`tasklist`, `taskkill`) se llaman por su ruta completa.
+- Los ID de modelo preferido se validan: `models --set` rechaza valores no válidos y `run`
+  ignora (con aviso) uno no válido guardado en `config.json`.
+
+### Añadido
+
+- Variable de entorno `AGYSWITCHER_AGY` para indicar la ruta completa de agy. El instalador
+  la crea con la ruta de Antigravity CLI (respetando una que ya tengas) y la borra al
+  desinstalar.
+- `doctor` muestra de dónde sale el agy que se usa y avisa si `AGYSWITCHER_AGY` ya no es válida.
+
 ## [1.5.0] - 2026-11-23
 
 Conmutación instantánea de cuentas mediante slots en Windows Credential Manager

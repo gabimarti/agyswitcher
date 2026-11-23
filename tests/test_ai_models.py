@@ -8,6 +8,8 @@ import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from agyswitcher.ai_models import (
     KNOWN_MODELS,
     AIModel,
@@ -119,3 +121,9 @@ def test_inject_preferred_model_args() -> None:
     # Con formato --model=...
     with_eq = ["--model=gemini-pro", "task"]
     assert inject_preferred_model_args(with_eq, "claude-sonnet-4-6") == with_eq
+
+
+@pytest.mark.parametrize("model_id", ["--evil", "-x", "a b", "a&b", "x" * 200])
+def test_inject_preferred_model_skips_invalid_ids(model_id: str) -> None:
+    """Un ID inválido (empieza por '-', espacios, metacaracteres, demasiado largo) no se inyecta."""
+    assert inject_preferred_model_args(["--help"], model_id) == ["--help"]
