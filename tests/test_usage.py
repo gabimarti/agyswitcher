@@ -384,3 +384,34 @@ def test_sync_renews_exhaustion_date_when_reset_already_passed() -> None:
     assert state.gemini_quota_exhausted["a"] == now.isoformat()
     assert state.external_quota_exhausted["a"] == "2026-11-18T12:00:00+00:00"
     assert state.is_pool_blocked("a", "gemini", now)
+
+
+def test_is_quota_stale_handles_none_or_missing_date() -> None:
+    from agyswitcher.models import AccountQuotaInfo
+    from agyswitcher.usage import is_quota_stale
+
+    assert is_quota_stale(None) is True
+
+    info_no_date = AccountQuotaInfo()
+    object.__setattr__(info_no_date, "updated_at", None)
+    assert is_quota_stale(info_no_date) is True
+
+
+def test_is_quota_stale_considers_ttl() -> None:
+    from agyswitcher.models import AccountQuotaInfo
+    from agyswitcher.usage import DEFAULT_QUOTA_TTL_SECONDS, is_quota_stale
+
+    now = datetime(2026, 11, 23, 12, 0, 0, tzinfo=UTC)
+
+    # Actualizado hace 60 segundos (< 180s): fresco
+    info_fresh = AccountQuotaInfo(updated_at=now - timedelta(seconds=60))
+    assert is_quota_stale(info_fresh, now=now) is False
+
+    # Actualizado hace 200 segundos (> 180s): obsoleto
+    info_stale = AccountQuotaInfo(updated_at=now - timedelta(seconds=200))
+    assert is_quota_stale(info_stale, now=now) is True
+
+    # Comprobación de TTL personalizado
+    assert is_quota_stale(info_fresh, ttl_seconds=30.0, now=now) is True
+    assert is_quota_stale(info_stale, ttl_seconds=300.0, now=now) is False
+    assert DEFAULT_QUOTA_TTL_SECONDS == 180.0

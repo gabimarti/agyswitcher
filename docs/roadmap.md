@@ -35,6 +35,8 @@ flowchart LR
 
 - `run` lanza `agy` sin intérprete de comandos intermedio, muestra su salida en tiempo real y
   la sanea (tokens, cookies y cabeceras de autorización) antes de cualquier registro.
+- Antes de lanzar `agy`, `run` revisa la frescura de los datos de cuota de la cuenta activa (TTL
+  de 3 minutos) y los consulta en vivo si están obsoletos para avisar con precisión de cuota baja.
 - Mientras `agy` está abierto, `run` vigila también sus registros, así que detecta la cuota
   agotada aunque `agy` se use en modo interactivo.
 - `Ctrl+C` y cierre limpio de todo el árbol de procesos en Windows.

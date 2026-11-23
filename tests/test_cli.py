@@ -17,7 +17,7 @@ from agyswitcher.config import load_accounts
 from agyswitcher.models import AccountQuotaInfo
 from agyswitcher.runner import AgyNotFoundError, RunnerError
 from agyswitcher.state import load_state, save_state
-from agyswitcher.usage import AuthRequiredError, PoolUsage, UsageReport
+from agyswitcher.usage import AuthRequiredError, PoolUsage, UsageError, UsageReport
 
 runner = CliRunner()
 
@@ -2182,3 +2182,104 @@ def test_run_ignores_old_and_non_error_log_lines() -> None:
 
     assert "Cuota agotada" not in result.output
     assert load_state().gemini_quota_exhausted == {}
+
+
+def test_run_refreshes_stale_quota_before_launch(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Si la cuota de la cuenta activa está obsoleta, run la refresca antes de lanzar agy."""
+    runner.invoke(app, ["add", "cuenta-1", "--email", "uno@example.com"])
+    now = datetime.now(UTC)
+    state = load_state()
+    # Cuota antigua (> 180 s) con 80 % restante
+    state.accounts_quota["cuenta-1"] = AccountQuotaInfo(
+        gemini_percent=80, external_percent=90, updated_at=now - timedelta(seconds=300)
+    )
+    save_state(state)
+
+    # El informe en vivo reporta cuota baja (12 %)
+    fresh_report = UsageReport(
+        is_authenticated=True,
+        active_email="uno@example.com",
+        pools={
+            "gemini": PoolUsage("gemini", "Gemini", "Weekly", 12, None, ""),
+            "external": PoolUsage("external", "Otros", "Weekly", 90, None, ""),
+        },
+    )
+
+    fetch_mock = MagicMock(return_value=fresh_report)
+    monkeypatch.setattr("agyswitcher.cli.fetch_usage", fetch_mock)
+    monkeypatch.setattr("agyswitcher.cli.run_agy_process", lambda **_k: 0)
+
+    result = runner.invoke(app, ["run"])
+
+    assert fetch_mock.called
+    assert "Cuota baja en 'cuenta-1'" in result.output
+    updated_state = load_state()
+    info = updated_state.accounts_quota["cuenta-1"]
+    assert info.gemini_percent == 12
+
+
+def test_run_fresh_quota_does_not_call_fetch_usage(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Si la cuota fue actualizada recientemente (< 180 s), run no consulta fetch_usage."""
+    runner.invoke(app, ["add", "cuenta-1", "--email", "uno@example.com"])
+    _set_quota("cuenta-1", 50)  # _set_quota usa datetime.now(UTC) por defecto: fresco
+
+    fetch_mock = MagicMock()
+    monkeypatch.setattr("agyswitcher.cli.fetch_usage", fetch_mock)
+    monkeypatch.setattr("agyswitcher.cli.run_agy_process", lambda **_k: 0)
+
+    result = runner.invoke(app, ["run"])
+
+    assert result.exit_code == 0
+    fetch_mock.assert_not_called()
+
+
+def test_run_stale_quota_fetch_failure_continues(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Si la consulta de refresco falla (ej: sin red), run no se detiene y lanza agy."""
+    runner.invoke(app, ["add", "cuenta-1", "--email", "uno@example.com"])
+    now = datetime.now(UTC)
+    state = load_state()
+    state.accounts_quota["cuenta-1"] = AccountQuotaInfo(
+        gemini_percent=80, external_percent=90, updated_at=now - timedelta(seconds=300)
+    )
+    save_state(state)
+
+    monkeypatch.setattr(
+        "agyswitcher.cli.fetch_usage", MagicMock(side_effect=UsageError("Fallo de red"))
+    )
+    process_called = False
+
+    def _fake_process(**_k: object) -> int:
+        nonlocal process_called
+        process_called = True
+        return 0
+
+    monkeypatch.setattr("agyswitcher.cli.run_agy_process", _fake_process)
+
+    result = runner.invoke(app, ["run"])
+
+    assert result.exit_code == 0
+    assert process_called is True
+
+
+def test_run_concurrent_detection_safety() -> None:
+    """Verifica que la detección de cuota agotada sincroniza de forma segura múltiples fuentes."""
+    _two_accounts()
+    log = Path.home() / ".gemini" / "antigravity-cli" / "cli.log"
+    log.parent.mkdir(parents=True, exist_ok=True)
+    log.write_text("", encoding="utf-8")
+
+    def _simultaneous_error_runner(args=None, cwd=None, on_line=None, **_k) -> int:
+        # Escribe en el log de agy (hilo secundario lo leerá)
+        with log.open("a", encoding="utf-8") as f:
+            f.write(_AGY_LOG_429)
+        # Simultáneamente dispara por el callback de línea del proceso (hilo principal)
+        if on_line:
+            on_line("429 RESOURCE_EXHAUSTED: rate limit exceeded\n")
+        return 0
+
+    with patch("agyswitcher.cli.run_agy_process", side_effect=_simultaneous_error_runner):
+        result = runner.invoke(app, ["run"])
+
+    assert result.exit_code == 0 or "Durante la ejecución" in result.output
+    state = load_state()
+    assert "cuenta-1" in state.gemini_quota_exhausted

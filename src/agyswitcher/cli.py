@@ -86,12 +86,14 @@ from agyswitcher.session import (
 )
 from agyswitcher.state import StateError, load_state, save_state
 from agyswitcher.usage import (
+    DEFAULT_QUOTA_TTL_SECONDS,
     AuthRequiredError,
     UsageError,
     UsageReport,
     detect_active_email,
     fetch_usage,
     format_time_remaining,
+    is_quota_stale,
     update_state_from_usage_report,
 )
 from agyswitcher.version import full_version
@@ -307,6 +309,36 @@ def _refresh_quota_after_switch(alias: str, accounts: dict[str, Account], state:
             console.print(f"[yellow]Confirmado: la cuota de {pool_name} sigue agotada.[/yellow]")
         else:
             console.print(f"[green]✓ La cuota de {pool_name} vuelve a estar disponible.[/green]")
+
+
+def _refresh_active_quota_if_stale(
+    accounts: dict[str, Account],
+    state: AppState,
+    *,
+    ttl_seconds: float = DEFAULT_QUOTA_TTL_SECONDS,
+    timeout: float = 10.0,
+) -> bool:
+    """Si los datos de cuota de la cuenta activa están obsoletos o ausentes, los actualiza en vivo.
+
+    Se ejecuta de forma segura y no bloqueante antes de lanzar agy: si la llamada falla
+    o expira el tiempo, se suprime el error para no impedir el arranque.
+    """
+    alias = state.active
+    if not alias or alias not in accounts:
+        return False
+    info = state.accounts_quota.get(alias)
+    if not is_quota_stale(info, ttl_seconds=ttl_seconds):
+        return False
+
+    with contextlib.suppress(*USAGE_FETCH_ERRORS):
+        report = fetch_usage(timeout=timeout)
+        owner = _report_owner(accounts, state, report) if report else None
+        if report and report.pools and owner:
+            update_state_from_usage_report(state, owner, report)
+            with contextlib.suppress(StateError):
+                save_state(state)
+            return True
+    return False
 
 
 def _guided_account_switch(
@@ -1256,12 +1288,8 @@ def list_accounts(
     should_refresh = live
     if not cached and not live and state.active:
         info = state.accounts_quota.get(state.active)
-        if info is None or info.updated_at is None:
+        if is_quota_stale(info, ttl_seconds=DEFAULT_QUOTA_TTL_SECONDS):
             should_refresh = True
-        else:
-            age = (datetime.now(UTC) - info.updated_at).total_seconds()
-            if age > 180:
-                should_refresh = True
 
     if should_refresh and state.active:
         with contextlib.suppress(*USAGE_FETCH_ERRORS):
@@ -2361,6 +2389,9 @@ def run(
         preferred = active_acc.get_preferred_model(state.active_model_group)
         if preferred:
             effective_args = inject_preferred_model_args(effective_args, preferred)
+
+    # Actualizar la cuota en vivo si los datos guardados están obsoletos (> 3 min)
+    _refresh_active_quota_if_stale(accounts, state)
 
     _warn_low_quota(accounts, state)
 

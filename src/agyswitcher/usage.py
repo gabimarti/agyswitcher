@@ -24,9 +24,34 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 
-from agyswitcher.models import AppState, is_valid_email
+from agyswitcher.models import AccountQuotaInfo, AppState, is_valid_email
 from agyswitcher.runner import RunnerError, find_agy_executable, run_captured, sanitize_line
 from agyswitcher.session import read_log_tail
+
+DEFAULT_QUOTA_TTL_SECONDS: float = 180.0
+"""Tiempo por defecto (segundos) de validez de las métricas de cuota antes de considerarlas obsoletas (3 min)."""
+
+
+def is_quota_stale(
+    info: AccountQuotaInfo | None,
+    ttl_seconds: float = DEFAULT_QUOTA_TTL_SECONDS,
+    now: datetime | None = None,
+) -> bool:
+    """Comprueba si la información de cuota está ausente, sin fecha o ha superado el TTL.
+
+    Args:
+        info: Objeto AccountQuotaInfo con las métricas guardadas de la cuenta.
+        ttl_seconds: Tiempo máximo en segundos para considerar frescos los datos guardados.
+        now: Momento de referencia (None usa datetime.now(UTC)).
+
+    Returns:
+        True si los datos están obsoletos o ausentes y requieren refresco.
+    """
+    if info is None or info.updated_at is None:
+        return True
+    current = now if now is not None else datetime.now(UTC)
+    return (current - info.updated_at).total_seconds() > ttl_seconds
+
 
 _AUTH_ERROR_PATTERNS = [
     re.compile(r"(?i)\b(?:please\s+log\s+in|not\s+logged\s+in|authentication\s+required)\b"),

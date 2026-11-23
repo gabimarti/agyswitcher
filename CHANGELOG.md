@@ -6,6 +6,9 @@ Todos los cambios relevantes de AgySwitcher se documentan en este fichero.
 
 ### Añadido
 
+- Revisión automática de frescura de cuota al arrancar `agyswitcher run`: si los datos de la cuenta activa
+  tienen más de 3 minutos (o no existen), se actualizan en vivo de forma segura y no bloqueante antes de
+  lanzar `agy`, evaluando el aviso de cuota baja con métricas recientes.
 - Fichero de traspaso local `HANDOFF.md` (o `dev_mem/HANDOFF.md` si el proyecto tiene esa carpeta)
   al ejecutar `agyswitcher handoff save`, con soporte de notas adicionales mediante `--note`. Permite
   que el nuevo agente retome el trabajo directamente desde el archivo sin depender del portapapeles.
