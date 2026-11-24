@@ -61,13 +61,14 @@ Detalles, actualización y desarrollo: [Instalación](docs/manual/instalacion.md
 ```powershell
 agyswitcher add personal --email personal@example.com   # registra tus cuentas
 agyswitcher add trabajo  --email trabajo@example.com --no-activate
-agyswitcher list                                         # cuota de cada cuenta
+agyswitcher set-active trabajo   # una vez por cuenta: guarda su slot (inicio de sesión guiado)
+agyswitcher list                 # cuota de cada cuenta; [slot] = cambio sin navegador
 
 cd C:\ruta\a\mi-proyecto
 agyswitcher init                 # prepara el proyecto (AGENTS.md, dev_mem/...)
 
 agyswitcher handoff save         # cuando la cuota baja: el agente guarda el estado
-agyswitcher set-active trabajo   # cambio de cuenta guiado y verificado
+agyswitcher set-active personal  # cambio de cuenta instantáneo (o guiado si no hay slot)
 ```
 
 ## Documentación

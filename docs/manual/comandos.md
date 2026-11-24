@@ -42,7 +42,8 @@ agyswitcher add trabajo --email trabajo@example.com --no-activate
 
 Solo se activa (y se consulta su cuota) si la sesión de `agy` es de esa cuenta, o si es la
 primera que registras. **Registra siempre el email**: sin él no se puede verificar el cambio
-de cuenta.
+de cuenta. Después prepara su slot con un primer [`set-active`](#set-active) guiado: ver la
+[preparación](dia-a-dia.md#2-prepara-el-slot-de-cada-cuenta).
 
 ## remove
 

@@ -49,20 +49,58 @@ flowchart LR
 
 ## Preparación (una sola vez)
 
-Registra tus cuentas con su email y prepara cada proyecto:
+La preparación tiene tres pasos. Si los haces el primer día, después cambiarás de cuenta al
+instante, sin navegador.
+
+### 1. Registra tus cuentas
+
+Antes, inicia sesión en `agy` con la primera cuenta. Después registra todas con su email:
 
 ```powershell
 agyswitcher add uni      --email uni@example.com
 agyswitcher add personal --email personal@example.com --no-activate
 agyswitcher add extra    --email extra@example.com    --no-activate
+```
 
+Usa alias que reconozcas de un vistazo (`uni`, `personal`, `extra`…). La cuenta con la que
+tienes la sesión iniciada en `agy` (`uni` en el ejemplo) queda ya preparada.
+
+### 2. Prepara el slot de cada cuenta
+
+Para cambiar a una cuenta sin navegador, AgySwitcher necesita haberla visto con la sesión
+iniciada **una vez**. Así guarda su sesión en un *slot* del Administrador de credenciales de
+Windows (ver [conceptos](conceptos.md)).
+Hazlo ahora con cada cuenta que **no** muestre `[slot]` en `agyswitcher list`:
+
+```powershell
+agyswitcher list                 # las cuentas preparadas muestran [slot]
+agyswitcher set-active personal  # cambio guiado: en agy, /logout y entra con personal@...
+agyswitcher set-active extra     # lo mismo con extra@...
+agyswitcher set-active uni       # vuelta a la primera: ya es instantáneo
+agyswitcher list                 # ahora todas muestran [slot]
+```
+
+En cada cambio guiado, AgySwitcher te dice con qué email entrar. Comprueba que has iniciado
+sesión con esa cuenta y guarda su slot. Solo pasas por el navegador **una vez por cuenta**:
+`/logout` no invalida los slots que ya tienes guardados.
+
+!!! tip "¿Has cambiado de cuenta directamente en `agy`?"
+    Si haces `/logout` y `/login` dentro de `agy` sin pasar por `set-active`, ejecuta después
+    `agyswitcher list` (o `status`, `sync` o `run`). AgySwitcher verá la sesión nueva y guardará
+    el slot de esa cuenta.
+
+Vuelve a preparar el slot de una cuenta (otro `set-active` guiado) solo si Google invalida
+su sesión guardada. Lo notarás porque AgySwitcher te pide el navegador para esa cuenta.
+
+### 3. Prepara cada proyecto
+
+```powershell
 cd C:\Proyectos\MiPractica
 agyswitcher init
 ```
 
-Usa alias que reconozcas de un vistazo (`uni`, `personal`, `extra`…). Después abre
-`AGENTS.md` y completa la sección **Proyecto** (o pídeselo al agente): cuanto mejor descrito
-esté el proyecto, mejor retomará el trabajo cualquier sesión nueva.
+Después abre `AGENTS.md` y completa la sección **Proyecto** (o pídeselo al agente): cuanto
+mejor descrito esté el proyecto, mejor retomará el trabajo cualquier sesión nueva.
 
 Si algo no cuadra, `agyswitcher doctor` revisa la instalación y te dice cómo arreglarlo.
 
@@ -194,6 +232,8 @@ Lo explica la página [Varios agentes y proveedores](multiagente.md).
 ## Buenas prácticas
 
 - **Registra siempre el email** de cada cuenta: sin él no se puede verificar el cambio.
+- **Prepara el slot de todas las cuentas el primer día** (todas con `[slot]` en `list`): así
+  ningún cambio de cuenta te obliga a abrir el navegador cuando se acaba la cuota.
 - **Guarda el estado pronto**: al aviso de cuota baja, al final del día y antes de cualquier
   cambio de cuenta o de agente.
 - **Pide al agente que mantenga la memoria al día**: «cuando termines esta tarea, actualiza
@@ -216,5 +256,6 @@ Lo explica la página [Varios agentes y proveedores](multiagente.md).
 | Retomar después del cambio | `agyswitcher handoff resume` |
 | Preparar un proyecto | `agyswitcher init` |
 | Comprobar que todo está bien | `agyswitcher doctor` |
+| Ver qué cuentas tienen slot | `agyswitcher list` (`[slot]`) |
 
 Todas las opciones están en la [referencia de comandos](comandos.md).

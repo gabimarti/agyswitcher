@@ -130,5 +130,6 @@ primera vez. Si defines la variable de entorno `AGYSWITCHER_HOME`, se usa esa ca
 lugar: elige una carpeta privada de tu usuario, porque contiene los emails de tus cuentas y
 hereda los permisos de la carpeta donde la pongas.
 
-Siguiente paso: lee los [conceptos](conceptos.md) y registra tus cuentas con
-[`add`](comandos.md#add).
+Siguiente paso: lee los [conceptos](conceptos.md) y sigue la
+[preparación](dia-a-dia.md#1-registra-tus-cuentas): registra tus cuentas con
+[`add`](comandos.md#add) y prepara el slot de cada una para cambiar después sin navegador.
