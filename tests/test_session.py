@@ -12,7 +12,9 @@ from agyswitcher.session import (
     LoginWaitResult,
     LoginWaitStatus,
     detect_new_login_email,
+    extract_conversation_id,
     extract_login_email,
+    is_conversation_id,
     snapshot_log_offsets,
     wait_for_login,
 )
@@ -245,3 +247,48 @@ def test_extract_login_email_requires_glog_header() -> None:
     )
     assert extract_login_email(text) == "a@example.com"
     assert extract_login_email("OAuth: authenticated successfully as x@example.com\n") is None
+
+
+CONV = "0632c413-6240-4e60-a8a3-931d462fb274"
+
+
+def test_extract_conversation_id_from_real_line_formats() -> None:
+    """Reconoce las formas en que agy nombra la conversación en sus logs."""
+    lines = [
+        f"I1123 20:33:51.085223   24729 server.go:1269] Created conversation {CONV} (backend=X)",
+        f"I1123 20:39:40.151415       1 common.go:496] Resuming conversation {CONV}",
+        f"I1123 20:39:40.151415     109 conversation_manager.go:1269] Streaming conversation {CONV}",
+        f"I1123 20:34:00.000000       1 x.go:1] breakdown: map[blocking:false cascade_id:{CONV}]",
+        f"I1123 20:34:00.000000       1 input_loop.go:9] sent convID={CONV.upper()}",
+    ]
+    assert [extract_conversation_id(line) for line in lines] == [CONV] * 5
+
+
+def test_extract_conversation_id_rejects_untrusted_lines() -> None:
+    """Sin cabecera glog o con un ID mal formado no hay conversación."""
+    assert extract_conversation_id(f"usuario: Resuming conversation {CONV}") is None
+    assert (
+        extract_conversation_id("I1123 20:39:40.1 1 common.go:496] Resuming conversation x") is None
+    )
+    assert is_conversation_id(CONV)
+    assert not is_conversation_id(f"{CONV}; del")
+
+
+def test_log_follower_marks_files_created_after_it(tmp_path: Path) -> None:
+    """Solo los logs creados después del seguidor cuentan como de la sesión nueva."""
+    log_dir = tmp_path / "log"
+    log_dir.mkdir()
+    old = log_dir / "cli-old.log"
+    old.write_text("", encoding="utf-8")
+    (tmp_path / "cli.log").write_text("", encoding="utf-8")
+    follower = LogFollower(tmp_path)
+    new = log_dir / "cli-new.log"
+    new.write_text("linea\n", encoding="utf-8")
+    old.write_text("otra\n", encoding="utf-8")
+
+    sources = {path.name: line for path, line in follower.poll_with_source()}
+
+    assert sources == {"cli-new.log": "linea", "cli-old.log": "otra"}
+    assert follower.is_new_file(new)
+    assert not follower.is_new_file(old)
+    assert not follower.is_new_file(tmp_path / "cli.log")

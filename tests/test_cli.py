@@ -1903,7 +1903,7 @@ def test_run_switches_pool_when_other_pool_available() -> None:
         result = runner.invoke(app, ["run"])
 
     assert result.exit_code == 1
-    assert "Vuelve a ejecutar agyswitcher run" in result.output
+    assert "Para seguir con esos modelos: agyswitcher run -- --continue" in result.output
     state = load_state()
     assert state.active == "cuenta-1"
     assert state.active_model_group == "external"
@@ -3078,3 +3078,189 @@ def test_slots_without_credman_and_invalid_action() -> None:
     _two_accounts()
     assert "no está disponible" in runner.invoke(app, ["slots"]).output
     assert runner.invoke(app, ["slots", "borrar"]).exit_code == 1
+
+
+# ---------------------------------------------------------------------------
+# run como supervisor: seguir en la misma conversación tras agotarse la cuota
+# ---------------------------------------------------------------------------
+
+_CONV_ID = "0632c413-6240-4e60-a8a3-931d462fb274"
+
+
+def _glog(text: str) -> str:
+    return f"I1124 10:00:00.000000       1 server.go:1269] {text}\n"
+
+
+class _ScriptedAgy:
+    """agy falso con varias ejecuciones: cada una escribe su log nuevo y emite sus líneas."""
+
+    def __init__(self, runs: list[tuple[list[str], list[str]]]) -> None:
+        self.runs = runs
+        self.calls: list[list[str]] = []
+
+    def __call__(self, args: list[str], *, on_line: object = None, **_kw: object) -> int:
+        index = len(self.calls)
+        self.calls.append(list(args))
+        log_lines, out_lines = self.runs[index] if index < len(self.runs) else ([], [])
+        log_dir = Path.home() / ".gemini" / "antigravity-cli" / "log"
+        log_dir.mkdir(parents=True, exist_ok=True)
+        (log_dir / f"cli-run{index}.log").write_text("".join(log_lines), encoding="utf-8")
+        for line in out_lines:
+            if callable(on_line):
+                on_line(line)
+        return 0
+
+
+def _exhaust_both_pools_on_launch(alias: str = "cuenta-1") -> None:
+    state = load_state()
+    state.external_quota_exhausted[alias] = _recent_iso()
+    save_state(state)
+
+
+def test_resume_args_drop_previous_resume_and_initial_prompt() -> None:
+    """Al retomar se quitan -c, --conversation, -i y su valor, y se añade el ID validado."""
+    from agyswitcher.cli import _resume_args
+
+    base = ["--model", "m1", "-c", "-r", "viejo", "-i", "hola", "--resume=otro", "--sandbox"]
+    assert _resume_args(base, _CONV_ID) == [
+        "--model",
+        "m1",
+        "--sandbox",
+        "--conversation",
+        _CONV_ID,
+    ]
+    assert _resume_args(["--sandbox"], None) == ["--sandbox", "--continue"]
+    assert _resume_args([], "no-es-un-uuid; rm") == ["--continue"]
+
+
+def test_run_offers_switch_and_resumes_same_conversation(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Con la cuota agotada, run cambia de cuenta (slot) y relanza agy en la misma conversación."""
+    _two_accounts()
+    _exhaust_both_pools_on_launch()
+    agy = _ScriptedAgy([([_glog(f"Created conversation {_CONV_ID}")], [_GEMINI_429])])
+    monkeypatch.setattr("agyswitcher.cli.run_agy_process", agy)
+    monkeypatch.setattr("agyswitcher.cli._is_interactive", lambda: True)
+    monkeypatch.setattr("agyswitcher.cli.has_slot", lambda a: a == "cuenta-2")
+    monkeypatch.setattr("agyswitcher.cli.promote_slot_to_active", lambda a, e: e)
+
+    result = runner.invoke(app, ["run", "--", "--sandbox"], input="\n")
+
+    assert result.exit_code == 0, result.output
+    assert "¿Cambiar a 'cuenta-2' (al instante)" in result.output
+    assert len(agy.calls) == 2
+    assert agy.calls[1] == ["--sandbox", "--conversation", _CONV_ID]
+    assert load_state().active == "cuenta-2"
+
+
+def test_run_declined_switch_prints_resume_command(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Si el usuario no quiere cambiar, se muestra la orden para seguir después."""
+    _two_accounts()
+    _exhaust_both_pools_on_launch()
+    agy = _ScriptedAgy([([_glog(f"Resuming conversation {_CONV_ID}")], [_GEMINI_429])])
+    monkeypatch.setattr("agyswitcher.cli.run_agy_process", agy)
+    monkeypatch.setattr("agyswitcher.cli._is_interactive", lambda: True)
+
+    result = runner.invoke(app, ["run"], input="n\n")
+
+    assert result.exit_code == 0, result.output
+    assert len(agy.calls) == 1
+    assert f"agyswitcher run -- --conversation {_CONV_ID}" in result.output
+    assert load_state().active == "cuenta-1"
+
+
+def test_run_without_terminal_only_prints_commands(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Sin terminal interactiva no se pregunta: se muestran las órdenes (cambiar y seguir)."""
+    _two_accounts()
+    _exhaust_both_pools_on_launch()
+    agy = _ScriptedAgy([([], [_GEMINI_429])])
+    monkeypatch.setattr("agyswitcher.cli.run_agy_process", agy)
+
+    result = runner.invoke(app, ["run"])
+
+    assert len(agy.calls) == 1
+    assert "agyswitcher set-active cuenta-2" in result.output
+    assert "agyswitcher run -- --continue" in result.output
+
+
+def test_run_print_mode_does_not_offer_resume(monkeypatch: pytest.MonkeyPatch) -> None:
+    """En modo -p (un mensaje y salir) no se ofrece relanzar agy."""
+    _two_accounts()
+    _exhaust_both_pools_on_launch()
+    agy = _ScriptedAgy([([], [_GEMINI_429])])
+    monkeypatch.setattr("agyswitcher.cli.run_agy_process", agy)
+    monkeypatch.setattr("agyswitcher.cli._is_interactive", lambda: True)
+
+    result = runner.invoke(app, ["run", "--", "-p", "hola"])
+
+    assert len(agy.calls) == 1
+    assert "¿Cambiar a" not in result.output
+
+
+def test_run_pool_switch_relaunches_in_same_conversation(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Si queda el otro pool, se ofrece relanzar en la misma conversación con esos modelos."""
+    _two_accounts()
+    agy = _ScriptedAgy([([_glog(f"Created conversation {_CONV_ID}")], [_GEMINI_429])])
+    monkeypatch.setattr("agyswitcher.cli.run_agy_process", agy)
+    monkeypatch.setattr("agyswitcher.cli._is_interactive", lambda: True)
+
+    result = runner.invoke(app, ["run"], input="\n")
+
+    assert result.exit_code == 0, result.output
+    assert agy.calls[1] == ["--conversation", _CONV_ID]
+    assert load_state().active_model_group == "external"
+
+
+def test_run_ignores_conversation_ids_from_other_sessions(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Un ID escrito en un log que ya existía (otra terminal) no se usa para retomar."""
+    _two_accounts()
+    _exhaust_both_pools_on_launch()
+    log_dir = Path.home() / ".gemini" / "antigravity-cli" / "log"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    other = log_dir / "cli-otra.log"
+    other.write_text("", encoding="utf-8")
+    foreign = "11111111-2222-3333-4444-555555555555"
+
+    def _agy(args: list[str], *, on_line: object = None, **_kw: object) -> int:
+        other.write_text(_glog(f"Created conversation {foreign}"), encoding="utf-8")
+        if callable(on_line):
+            on_line(_GEMINI_429)
+        return 0
+
+    monkeypatch.setattr("agyswitcher.cli.run_agy_process", _agy)
+
+    result = runner.invoke(app, ["run"])
+
+    assert foreign not in result.output
+    assert "agyswitcher run -- --continue" in result.output
+
+
+def test_run_records_login_done_inside_agy(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Un /logout + /login dentro de agy durante run deja como activa la cuenta nueva."""
+    _two_accounts()
+    login = "I1124 10:00:00.000000   1 server_oauth.go:226] OAuth: authenticated successfully as dos@example.com\n"
+    agy = _ScriptedAgy([([login], [])])
+    monkeypatch.setattr("agyswitcher.cli.run_agy_process", agy)
+
+    result = runner.invoke(app, ["run"])
+
+    assert result.exit_code == 0, result.output
+    assert "Sesión iniciada en agy con 'cuenta-2'" in result.output
+    state = load_state()
+    assert state.active == "cuenta-2"
+    assert "cuenta-1 (gemini) -> cuenta-2" in state.switch_history[-1]
+
+
+def test_run_closed_input_counts_as_no(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Si la entrada se cierra al preguntar, no se cambia de cuenta ni se aborta con error."""
+    _two_accounts()
+    _exhaust_both_pools_on_launch()
+    agy = _ScriptedAgy([([], [_GEMINI_429])])
+    monkeypatch.setattr("agyswitcher.cli.run_agy_process", agy)
+    monkeypatch.setattr("agyswitcher.cli._is_interactive", lambda: True)
+
+    result = runner.invoke(app, ["run"], input="")
+
+    assert result.exit_code == 0, result.output
+    assert "Aborted" not in result.output
+    assert "Cuando cambies de cuenta, sigue con" in result.output
+    assert load_state().active == "cuenta-1"

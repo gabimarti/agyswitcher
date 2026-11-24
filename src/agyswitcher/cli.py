@@ -18,6 +18,7 @@ import re
 import sys
 import threading
 import time
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Annotated
@@ -109,6 +110,9 @@ from agyswitcher.session import (
     DEFAULT_LOGIN_TIMEOUT,
     LogFollower,
     LoginWaitStatus,
+    extract_conversation_id,
+    extract_login_email,
+    is_conversation_id,
     snapshot_log_offsets,
     wait_for_login,
 )
@@ -562,6 +566,24 @@ def _is_interactive() -> bool:
     return sys.stdin.isatty()
 
 
+def _ask_yes_no(question: str, default: bool) -> bool:
+    """Pregunta sí/no; si la entrada se cierra (Ctrl+Z, fin de fichero), cuenta como «no»."""
+    try:
+        return typer.confirm(question, default=default)
+    except typer.Abort:
+        console.print()
+        return False
+
+
+def _ask_choice(question: str, default: str) -> str:
+    """Pide una opción de texto; si la entrada se cierra, devuelve ``default``."""
+    try:
+        return str(typer.prompt(question, default=default, show_default=True))
+    except typer.Abort:
+        console.print()
+        return default
+
+
 def _confirm_agy_closed(force: bool) -> bool:
     """Comprueba que no hay agy ni el IDE abiertos antes de cambiar la credencial activa.
 
@@ -593,11 +615,7 @@ def _confirm_agy_closed(force: bool) -> bool:
                 fg=typer.colors.YELLOW,
             )
             return False
-        choice = typer.prompt(
-            "[R]eintentar, [C]ontinuar igualmente o [A]bortar",
-            default="A",
-            show_default=True,
-        )
+        choice = _ask_choice("[R]eintentar, [C]ontinuar igualmente o [A]bortar", default="A")
         answer = choice.strip().lower()[:1]
         if answer == "r":
             running = find_running_agy_processes()
@@ -619,7 +637,7 @@ def _confirm_agy_closed(force: bool) -> bool:
                 fg=typer.colors.YELLOW,
             )
             return False
-        return typer.confirm("¿Continuar con el cambio de cuenta?", default=False)
+        return _ask_yes_no("¿Continuar con el cambio de cuenta?", default=False)
     return True
 
 
@@ -2788,18 +2806,273 @@ _LOG_ERROR_LINE = re.compile(r"^E\d{4}\s")
 _LOG_POLL_INTERVAL = 1.0
 """Segundos entre lecturas de los logs de agy durante 'run'."""
 
+_PRINT_MODE_FLAGS = ("-p", "--print", "--prompt")
+"""Opciones de agy de modo no interactivo (un mensaje y salir): no se ofrece retomar."""
+
+_RESUME_FLAGS = ("-c", "--continue")
+"""Opciones de agy que retoman una conversación sin valor."""
+
+_FLAGS_WITH_VALUE_DROPPED_ON_RESUME = (
+    "-r",
+    "--conversation",
+    "--resume",
+    "-i",
+    "--prompt-interactive",
+)
+"""Opciones con valor que no se repiten al retomar (otra conversación o el mensaje inicial)."""
+
+
+def _is_print_mode(args: list[str]) -> bool:
+    """True si los argumentos lanzan agy en modo no interactivo (``-p``/``--print``)."""
+    return any(a in _PRINT_MODE_FLAGS or a.startswith(("--print=", "--prompt=")) for a in args)
+
+
+def _resume_args(base_args: list[str], conversation_id: str | None) -> list[str]:
+    """Argumentos para relanzar agy en la misma conversación.
+
+    Quita las opciones de continuación y el mensaje inicial (``-i``) de la orden original, y
+    añade ``--conversation <ID>`` (o ``--continue`` si no se conoce el ID). El ID se valida
+    como UUID: procede de los logs, que son datos no confiables.
+    """
+    kept: list[str] = []
+    skip_value = False
+    for arg in base_args:
+        if skip_value:
+            skip_value = False
+            continue
+        if arg in _RESUME_FLAGS:
+            continue
+        if arg in _FLAGS_WITH_VALUE_DROPPED_ON_RESUME:
+            skip_value = True
+            continue
+        if "=" in arg and arg.split("=", 1)[0] in _FLAGS_WITH_VALUE_DROPPED_ON_RESUME:
+            continue
+        kept.append(arg)
+    if conversation_id and is_conversation_id(conversation_id):
+        return [*kept, "--conversation", conversation_id]
+    return [*kept, "--continue"]
+
+
+def _resume_command(conversation_id: str | None) -> str:
+    """Orden para retomar más tarde la conversación con AgySwitcher."""
+    if conversation_id and is_conversation_id(conversation_id):
+        return f"agyswitcher run -- --conversation {conversation_id}"
+    return "agyswitcher run -- --continue"
+
+
+def _agy_args_for_active(
+    base_args: list[str], accounts: dict[str, Account], state: AppState
+) -> list[str]:
+    """Argumentos de agy con el modelo preferido de la cuenta y el pool activos inyectado."""
+    active_acc = accounts.get(state.active) if state.active else None
+    if active_acc is None:
+        return list(base_args)
+    preferred = active_acc.get_preferred_model(state.active_model_group)
+    if preferred and not is_valid_model_id(preferred.strip()):
+        console.print(
+            f"[yellow]Modelo preferido '{escape(preferred)}' ignorado: no es un ID válido. "
+            "Cámbialo con 'agyswitcher models --set <id>' o bórralo con "
+            "'agyswitcher models --clear'.[/yellow]"
+        )
+        return list(base_args)
+    if preferred:
+        return inject_preferred_model_args(list(base_args), preferred)
+    return list(base_args)
+
+
+@dataclass
+class _AgySessionResult:
+    """Resultado de una ejecución supervisada de agy dentro de 'run'."""
+
+    exit_code: int
+    detected_pools: list[str] = field(default_factory=list)
+    conversation_id: str | None = None
+
+
+def _run_supervised_agy(
+    agy_args: list[str], accounts: dict[str, Account], state: AppState
+) -> _AgySessionResult:
+    """Ejecuta agy una vez vigilando su salida y sus logs.
+
+    Detecta la cuota agotada (y la registra en la cuenta activa), el ID de la conversación de
+    esta sesión y los inicios de sesión hechos dentro de agy: si son de otra cuenta registrada,
+    la registra como activa y guarda su slot.
+
+    Raises:
+        typer.Exit: Si agy no se encuentra o falla al lanzarse.
+    """
+    result = _AgySessionResult(exit_code=0)
+    detector = QuotaDetector(default_pool=state.active_model_group)
+    lock = threading.Lock()
+    emails = {alias: acc.email for alias, acc in accounts.items()}
+
+    def _on_process_line(line: str) -> None:
+        event = detector.detect_in_line(line)
+        if event is None or state.active is None:
+            return
+        with lock:
+            if event.pool not in result.detected_pools:
+                result.detected_pools.append(event.pool)
+                typer.secho(
+                    f"\a\n[AgySwitcher] Cuota agotada ({event.pool}) en '{state.active}'. "
+                    "Sal de agy (/exit) y te propondré cómo seguir en esta misma conversación.",
+                    fg=typer.colors.YELLOW,
+                    err=True,
+                )
+            now_iso = event.timestamp.isoformat()
+            changed = False
+            if event.pool == "gemini" and state.active not in state.gemini_quota_exhausted:
+                state.gemini_quota_exhausted[state.active] = now_iso
+                changed = True
+            elif event.pool == "external" and state.active not in state.external_quota_exhausted:
+                state.external_quota_exhausted[state.active] = now_iso
+                changed = True
+            if changed:
+                with contextlib.suppress(StateError):
+                    save_state(state)
+
+    def _on_login(email: str) -> None:
+        owner = find_alias_for_email(email, emails)
+        if owner is None or owner == state.active:
+            return
+        with lock:
+            pool = state.available_group_for(owner) or state.active_model_group
+            try:
+                record_rotation(owner, pool, state)
+            except StateError:
+                return
+            typer.secho(
+                f"\n[AgySwitcher] Sesión iniciada en agy con '{owner}': ahora es la cuenta activa.",
+                fg=typer.colors.CYAN,
+                err=True,
+            )
+        _capture_active_slot(accounts)
+
+    def _on_log_line(path: Path, line: str) -> None:
+        # En modo interactivo agy no muestra sus errores en la salida que se captura, pero sí
+        # los escribe en sus logs. Solo cuentan las líneas de error (glog 'E'), no las trazas.
+        if _LOG_ERROR_LINE.match(line):
+            _on_process_line(line)
+            return
+        email = extract_login_email(line)
+        if email:
+            _on_login(email)
+            return
+        if follower.is_new_file(path):
+            conversation_id = extract_conversation_id(line)
+            if conversation_id:
+                result.conversation_id = conversation_id
+
+    stop_following = threading.Event()
+    follower = LogFollower()
+
+    def _follow_logs() -> None:
+        while not stop_following.wait(_LOG_POLL_INTERVAL):
+            for path, log_line in follower.poll_with_source():
+                _on_log_line(path, log_line)
+
+    follow_thread = threading.Thread(target=_follow_logs, name="agy-log-follower", daemon=True)
+    follow_thread.start()
+    try:
+        result.exit_code = run_agy_process(args=agy_args, on_line=_on_process_line)
+    except AgyNotFoundError as err:
+        typer.secho(f"Error: No se encontró agy.exe. {err}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from err
+    except RunnerError as err:
+        typer.secho(f"Error al ejecutar agy: {err}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from err
+    finally:
+        stop_following.set()
+        follow_thread.join(timeout=_LOG_POLL_INTERVAL * 2)
+    for path, log_line in follower.poll_with_source():  # Lo escrito justo antes de cerrarse.
+        _on_log_line(path, log_line)
+
+    # Respaldo: si la sesión cambió sin que se viera en los logs, se guarda su slot y se avisa.
+    capture = _capture_active_slot(accounts)
+    if capture is not None and capture.alias != state.active:
+        console.print(
+            f"[yellow]agy tiene ahora la sesión de '{escape(capture.alias)}'; ejecuta "
+            "'agyswitcher sync' para que AgySwitcher lo refleje.[/yellow]"
+        )
+    return result
+
+
+def _next_launch_after_exhaustion(
+    base_args: list[str],
+    accounts: dict[str, Account],
+    state: AppState,
+    session: _AgySessionResult,
+) -> list[str] | None:
+    """Tras agotarse la cuota, propone cómo seguir en la misma conversación.
+
+    Si queda el otro pool en la cuenta activa, cambia de pool; si no, propone la siguiente
+    cuenta con cuota. Con terminal interactiva (y agy en modo conversación) pregunta si
+    cambiar y relanzar agy con ``--conversation <ID>``; si no, muestra las órdenes.
+
+    Returns:
+        Argumentos para relanzar agy, o None si 'run' debe terminar.
+    """
+    typer.secho(
+        f"\n[!] Durante la ejecución se agotó la cuota ({', '.join(session.detected_pools)}) "
+        f"en la cuenta '{state.active}'.",
+        fg=typer.colors.YELLOW,
+    )
+    resume_cmd = _resume_command(session.conversation_id)
+    try:
+        new_pool = _propose_after_exhaustion(accounts, state)
+    except StateError as err:
+        typer.secho(f"No se pudo guardar el cambio de pool: {err}", fg=typer.colors.RED, err=True)
+        return None
+    can_offer = not _is_print_mode(base_args) and _is_interactive()
+    resume_args = _resume_args(base_args, session.conversation_id)
+
+    if new_pool is not None:
+        if can_offer and _ask_yes_no(
+            "¿Relanzar agy con esos modelos y seguir en la misma conversación?", default=True
+        ):
+            return _agy_args_for_active(resume_args, accounts, state)
+        typer.secho(f"Para seguir con esos modelos: {resume_cmd}", fg=typer.colors.CYAN)
+        return None
+
+    candidate = select_next_candidate(accounts, state)
+    if candidate is None or candidate[0] == state.active:
+        return None
+    next_alias, next_pool = candidate
+    if not can_offer:
+        typer.secho(
+            f"Después de cambiar, sigue en la misma conversación con: {resume_cmd}",
+            fg=typer.colors.CYAN,
+        )
+        return None
+    instant = bool(accounts[next_alias].email) and has_slot(next_alias)
+    how = "al instante" if instant else "con inicio de sesión guiado"
+    if not _ask_yes_no(
+        f"¿Cambiar a '{next_alias}' ({how}) y seguir en la misma conversación?", default=True
+    ):
+        typer.secho(f"Cuando cambies de cuenta, sigue con: {resume_cmd}", fg=typer.colors.CYAN)
+        return None
+    try:
+        msg = _switch_account(next_alias, next_pool, accounts, state, DEFAULT_LOGIN_TIMEOUT)
+    except typer.Exit:
+        typer.secho(f"Cuando cambies de cuenta, sigue con: {resume_cmd}", fg=typer.colors.CYAN)
+        return None
+    typer.secho(msg, fg=typer.colors.GREEN)
+    _refresh_quota_after_switch(next_alias, accounts, state)
+    console.print("[dim]Relanzando agy en la misma conversación...[/dim]")
+    return _agy_args_for_active(resume_args, accounts, state)
+
 
 @app.command(
     help=(
         "Flujo principal: ejecuta agy con comprobación de cuota baja, inyección de modelo preferido "
-        "y detección en tiempo real. Ejemplo: agyswitcher run / agyswitcher run -- --continue"
+        "y detección en tiempo real; si se agota la cuota, propone cambiar de cuenta y seguir en "
+        "la misma conversación. Ejemplo: agyswitcher run / agyswitcher run -- --continue"
     ),
 )
 def run(
     args: Annotated[list[str] | None, typer.Argument(help="Argumentos a pasar a agy.")] = None,
 ) -> None:
-    """Lanza agy con la cuenta activa y los argumentos indicados."""
-    # Verificar que hay una cuenta activa válida antes de lanzar agy
+    """Lanza agy con la cuenta activa y supervisa la sesión (cuota, cuenta y conversación)."""
     try:
         accounts = load_accounts()
     except ConfigError as err:
@@ -2829,71 +3102,12 @@ def run(
         )
         raise typer.Exit(code=1)
 
-    # Inyectar modelo preferido para el pool activo si está configurado
-    effective_args = list(args or [])
-    active_acc = accounts.get(state.active)
-    if active_acc is not None:
-        preferred = active_acc.get_preferred_model(state.active_model_group)
-        if preferred and not is_valid_model_id(preferred.strip()):
-            console.print(
-                f"[yellow]Modelo preferido '{escape(preferred)}' ignorado: no es un ID válido. "
-                "Cámbialo con 'agyswitcher models --set <id>' o bórralo con "
-                "'agyswitcher models --clear'.[/yellow]"
-            )
-        elif preferred:
-            effective_args = inject_preferred_model_args(effective_args, preferred)
+    base_args = list(args or [])
+    launch_args = _agy_args_for_active(base_args, accounts, state)
 
     # Actualizar la cuota en vivo si los datos guardados están obsoletos (> 3 min)
     _refresh_active_quota_if_stale(accounts, state)
-
     _warn_low_quota(accounts, state)
-    _capture_active_slot(accounts)
-
-    # Lanzar agy con los argumentos proporcionados y monitorizar cuota en tiempo real
-    detector = QuotaDetector(default_pool=state.active_model_group)
-    detected_pools: list[str] = []
-
-    detection_lock = threading.Lock()
-
-    def _on_process_line(line: str) -> None:
-        event = detector.detect_in_line(line)
-        if event is None or state.active is None:
-            return
-        with detection_lock:
-            if event.pool not in detected_pools:
-                detected_pools.append(event.pool)
-                typer.secho(
-                    f"\a\n[AgySwitcher] Cuota agotada ({event.pool}) en '{state.active}'. "
-                    "Sal de agy (/exit) y te indicaré cómo continuar.",
-                    fg=typer.colors.YELLOW,
-                    err=True,
-                )
-            now_iso = event.timestamp.isoformat()
-            changed = False
-            if event.pool == "gemini" and state.active not in state.gemini_quota_exhausted:
-                state.gemini_quota_exhausted[state.active] = now_iso
-                changed = True
-            elif event.pool == "external" and state.active not in state.external_quota_exhausted:
-                state.external_quota_exhausted[state.active] = now_iso
-                changed = True
-
-            if changed:
-                with contextlib.suppress(StateError):
-                    save_state(state)
-
-    def _on_log_line(line: str) -> None:
-        # En modo interactivo agy no muestra sus errores en la salida que se captura, pero sí
-        # los escribe en sus logs. Solo cuentan las líneas de error (glog 'E'), no las trazas.
-        if _LOG_ERROR_LINE.match(line):
-            _on_process_line(line)
-
-    stop_following = threading.Event()
-    follower = LogFollower()
-
-    def _follow_logs() -> None:
-        while not stop_following.wait(_LOG_POLL_INTERVAL):
-            for log_line in follower.poll():
-                _on_log_line(log_line)
 
     # Aviso si AGYSWITCHER_AGY está desfasada (la búsqueda sigue en el PATH de forma segura).
     with contextlib.suppress(AgyNotFoundError):
@@ -2901,59 +3115,17 @@ def run(
         if agy_warning:
             console.print(f"[yellow]{escape(agy_warning)}[/yellow]")
 
-    follow_thread = threading.Thread(target=_follow_logs, name="agy-log-follower", daemon=True)
-    follow_thread.start()
-    try:
-        exit_code = run_agy_process(args=effective_args, on_line=_on_process_line)
-    except AgyNotFoundError as err:
-        typer.secho(
-            f"Error: No se encontró agy.exe. {err}",
-            fg=typer.colors.RED,
-            err=True,
-        )
-        raise typer.Exit(code=1) from err
-    except RunnerError as err:
-        typer.secho(
-            f"Error al ejecutar agy: {err}",
-            fg=typer.colors.RED,
-            err=True,
-        )
-        raise typer.Exit(code=1) from err
-    finally:
-        stop_following.set()
-        follow_thread.join(timeout=_LOG_POLL_INTERVAL * 2)
-    for log_line in follower.poll():  # Lo escrito justo antes de cerrarse agy.
-        _on_log_line(log_line)
+    while True:
+        _capture_active_slot(accounts)
+        session = _run_supervised_agy(launch_args, accounts, state)
+        if not session.detected_pools:
+            break
+        next_args = _next_launch_after_exhaustion(base_args, accounts, state, session)
+        if next_args is None:
+            break
+        launch_args = next_args
 
-    # Si durante la sesión se cambió de cuenta dentro de agy (/logout + /login), se guarda
-    # el slot de la cuenta nueva y se avisa de que el estado ya no refleja la sesión real.
-    capture = _capture_active_slot(accounts)
-    if capture is not None and capture.alias != state.active:
-        console.print(
-            f"[yellow]agy tiene ahora la sesión de '{escape(capture.alias)}'; ejecuta "
-            "'agyswitcher sync' para que AgySwitcher lo refleje.[/yellow]"
-        )
-
-    if detected_pools:
-        typer.secho(
-            f"\n[!] Durante la ejecución se agotó la cuota ({', '.join(detected_pools)}) "
-            f"en la cuenta '{state.active}'.",
-            fg=typer.colors.YELLOW,
-        )
-        try:
-            new_pool = _propose_after_exhaustion(accounts, state)
-        except StateError as err:
-            typer.secho(
-                f"No se pudo guardar el cambio de pool: {err}", fg=typer.colors.RED, err=True
-            )
-        else:
-            if new_pool is not None:
-                typer.secho(
-                    "Vuelve a ejecutar agyswitcher run para continuar con esos modelos.",
-                    fg=typer.colors.CYAN,
-                )
-
-    sys.exit(exit_code)
+    sys.exit(session.exit_code)
 
 
 if __name__ == "__main__":

@@ -126,7 +126,14 @@ cd C:\Proyectos\MiPractica
 agyswitcher run
 ```
 
-Es la forma habitual y recomendada: ejecuta `agy` con tu modelo preferido inyectado, comprueba que la cuota esté fresca al arrancar (avisando si baja del 20 %) y, si la cuota se agota durante la sesión, te indica cómo continuar al salir.
+Es la forma habitual y recomendada: ejecuta `agy` con tu modelo preferido inyectado, comprueba que la cuota esté fresca al arrancar (avisando si baja del 20 %) y, si la cuota se agota durante la sesión, te ayuda a seguir con otra cuenta **en la misma conversación**.
+
+!!! tip "Si se agota la cuota en mitad de una tarea"
+    AgySwitcher te avisa. Sal de `agy` con `/exit` y responde a la pregunta: *¿Cambiar a
+    'personal' (al instante) y seguir en la misma conversación?* Pulsa Intro y `run` cambia de
+    cuenta y vuelve a abrir `agy` en esa conversación, con todo su contexto. No tienes que
+    resumir nada ni pegar instrucciones. Si la cuenta aún no tiene `[slot]`, el cambio será
+    guiado (inicio de sesión en el navegador) y después seguirá igual.
 
 Si prefieres abrir `agy` directamente por tu cuenta (por ejemplo, desde la terminal integrada de VS Code o Cursor), abre una segunda ventana y deja en segundo plano el modo observador avanzado:
 
@@ -142,6 +149,8 @@ En la primera instrucción de cada sesión, pide al agente que se ponga al día:
 
 ### 3. Aviso de cuota baja: guarda el estado **antes** de que se acabe
 
+Con `run` la conversación continúa aunque cambies de cuenta, pero conviene que la memoria del
+proyecto esté al día: te servirá si cambias de agente o empiezas una conversación nueva.
 Cuando la cuota del pool que usas baja del 20 %, AgySwitcher te avisa. Ejecuta
 `agyswitcher handoff save` para guardar `dev_mem/HANDOFF.md` y pega la instrucción en `agy`:
 

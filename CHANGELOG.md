@@ -31,6 +31,10 @@ Todos los cambios relevantes de AgySwitcher se documentan en este fichero.
 - Con `agy` o el IDE de Antigravity abiertos, el cambio instantáneo de cuenta explica cómo
   cerrarlos y pregunta (reintentar, continuar o abortar); `--force` en `set-active` y
   `rotate` para no preguntar.
+- `run` sigue en la misma conversación tras agotarse la cuota: al salir de `agy` pregunta si
+  cambiar a la siguiente cuenta (o pool) y vuelve a abrir `agy --conversation <ID>` con la
+  cuenta nueva, con todo el contexto. Si se prefiere hacerlo más tarde, muestra la orden para
+  retomar. Un `/logout` + `/login` dentro de `agy` durante `run` cambia la cuenta activa.
 - Comando `slots` (`list`, `clean`, `clean --all`) para ver y limpiar las sesiones guardadas.
   `doctor` muestra cuántas cuentas tienen slot y avisa de slots huérfanos o de otra cuenta.
 - El desinstalador recuerda que los slots siguen en el Administrador de credenciales y

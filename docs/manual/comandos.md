@@ -169,20 +169,30 @@ ofrece las siguientes ventajas integradas:
 3. **Supervisión pasiva en tiempo real:** mientras `agy` está abierto en modo interactivo,
    sigue sus registros de error (`cli.log`) en segundo plano sin ralentizar la consola ni
    lanzar procesos concurrentes.
-4. **Propuesta y guía al agotarse la cuota:** si durante la sesión se agota la cuota del pool
-   en uso, emite un aviso visual/sonoro inmediato y, al salir de `agy` (`/exit`), te indica cómo
-   continuar:
-   - si la misma cuenta tiene libre el otro pool, rota de pool automáticamente (solo tienes
-     que volver a ejecutar `agyswitcher run`);
-   - si no, propone la siguiente cuenta con cuota, indica el comando para cambiar (`set-active`)
-     y te recuerda guardar el estado (`handoff save`);
+4. **Seguir en la misma conversación al agotarse la cuota:** si durante la sesión se agota la
+   cuota del pool en uso, emite un aviso visual/sonoro inmediato. Sal de `agy` con `/exit` y
+   `run` te propone cómo seguir **en la misma conversación**, con todo su contexto:
+   - si la misma cuenta tiene libre el otro pool, cambia de pool y te pregunta si relanzar
+     `agy` con esos modelos;
+   - si no, te propone la siguiente cuenta con cuota y te pregunta si cambiar a ella (al
+     instante si tiene `[slot]`, o con el cambio guiado si no). Si aceptas (Intro), cambia de
+     cuenta y relanza `agy --conversation <ID>`: la conversación continúa con la cuenta nueva;
+   - si prefieres hacerlo más tarde, te muestra la orden para retomar
+     (`agyswitcher run -- --conversation <ID>`);
    - si todas figuran agotadas, sugiere cuál comprobar primero, como en [`rotate`](#rotate).
-5. **Paso transparente de argumentos:** todo lo que indiques después de `--` se envía directamente
+
+   El ID de la conversación se lee de los registros de la sesión que lanzó `run` (no de otras
+   terminales). Si no se conoce, se usa `--continue` (la conversación más reciente). En modo
+   `-p` (un mensaje y salir), o sin terminal interactiva, solo se muestran las órdenes.
+5. **Cambios de cuenta dentro de `agy`:** si durante la sesión haces `/logout` e inicias sesión
+   con otra cuenta registrada, `run` la registra como cuenta activa y guarda su slot.
+6. **Paso transparente de argumentos:** todo lo que indiques después de `--` se envía directamente
    a `agy`.
 
 ```powershell
 agyswitcher run                                     # Sesión interactiva normal (flujo principal recomendado)
 agyswitcher run -- --continue                       # Retomar la conversación más reciente de agy
+agyswitcher run -- --conversation <ID>              # Retomar una conversación concreta
 agyswitcher run -- -p "Analiza los errores en tests" # Consulta puntual directa sin abrir TUI
 agyswitcher run -- --model claude-sonnet-4-6        # Forzar un modelo específico para esta sesión
 agyswitcher run -- --help                           # Ver las opciones nativas de agy

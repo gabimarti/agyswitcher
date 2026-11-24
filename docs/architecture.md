@@ -151,6 +151,29 @@ flowchart TD
 Un cambio de **pool** dentro de la misma cuenta no requiere sesión y se registra
 directamente (`record_rotation`).
 
+### 3.3.1 `run` como supervisor: misma conversación con otra cuenta
+
+Comprobado con cuentas reales (2026-11-23): `agy --conversation <ID>` retoma con la cuenta B
+una conversación empezada con la cuenta A, y el modelo conserva el contexto (las
+conversaciones viven en `~/.gemini/antigravity-cli/conversations`, común a todas las cuentas).
+`run` es un bucle:
+
+1. `_run_supervised_agy` lanza agy y sigue sus logs con `LogFollower.poll_with_source`:
+   - líneas `E` → `QuotaDetector` (cuota agotada, registrada en la cuenta activa);
+   - `OAuth: authenticated successfully as <email>` de otra cuenta registrada → `record_rotation`
+     y `capture_active_slot` (un `/logout` + `/login` dentro de agy cambia la cuenta activa);
+   - `Created|Resuming|Streaming conversation <UUID>`, `cascade_id:` o `convID=` →
+     `session.extract_conversation_id`, **solo** de ficheros creados después de lanzar agy
+     (`LogFollower.is_new_file`), para no tomar el ID de otra terminal.
+2. Si se agotó la cuota, `_next_launch_after_exhaustion` aplica `_propose_after_exhaustion`
+   (cambio de pool o propuesta de cuenta) y, con terminal interactiva y fuera del modo `-p`,
+   pregunta si seguir. Al aceptar: `_switch_account` (instantáneo o guiado) y relanzamiento con
+   `_resume_args` (quita `-c`, `-r`/`--conversation`/`--resume`, `-i`/`--prompt-interactive` y su
+   valor; añade `--conversation <UUID>` validado, o `--continue`) y el modelo preferido de la
+   nueva cuenta y pool.
+3. Si no, muestra `agyswitcher run -- --conversation <ID>` para retomar más tarde. Una entrada
+   cerrada (fin de fichero) cuenta como «no».
+
 ### 3.4 Continuidad del proyecto (`project.py`)
 
 El contexto que debe sobrevivir a un cambio de cuenta o de agente vive **en el propio

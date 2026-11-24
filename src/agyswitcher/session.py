@@ -86,6 +86,31 @@ def snapshot_log_offsets(base_dir: Path | None = None) -> dict[Path, int]:
     return offsets
 
 
+UUID_PATTERN = r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
+"""Formato de un ID de conversación de agy (UUID)."""
+
+_CONVERSATION_ID_PATTERN = re.compile(
+    GLOG_LINE_PREFIX
+    + r"(?:.*?\b(?:Created|Resuming|Streaming) conversation\s+|.*?\bcascade_id:\s*|.*?\bconvID=)"
+    + "("
+    + UUID_PATTERN
+    + r")\b",
+    re.ASCII,
+)
+"""Líneas de agy que nombran la conversación en curso (creada, retomada o en uso)."""
+
+
+def is_conversation_id(value: str) -> bool:
+    """True si ``value`` tiene el formato de un ID de conversación de agy (UUID)."""
+    return re.fullmatch(UUID_PATTERN, value, re.ASCII) is not None
+
+
+def extract_conversation_id(line: str) -> str | None:
+    """ID de la conversación que nombra una línea de log de agy, o None (en minúsculas)."""
+    match = _CONVERSATION_ID_PATTERN.match(line)
+    return match.group(1).lower() if match else None
+
+
 def extract_login_email(text: str) -> str | None:
     """Devuelve el email del ÚLTIMO evento de inicio de sesión del texto, o None."""
     email: str | None = None
@@ -131,10 +156,23 @@ class LogFollower:
     def __init__(self, base_dir: Path | None = None) -> None:
         self._root = base_dir or default_session_log_dir()
         self._offsets = snapshot_log_offsets(self._root)
+        self._existing = set(self._offsets)
+
+    def is_new_file(self, path: Path) -> bool:
+        """True si el fichero no existía al crear el seguidor (lo creó una sesión posterior).
+
+        ``cli.log`` ya existía (apunta al log anterior), así que no cuenta como nuevo aunque
+        agy lo vuelva a crear: las líneas de la sesión nueva llegan por su fichero de ``log/``.
+        """
+        return path not in self._existing and path.name != "cli.log"
 
     def poll(self) -> list[str]:
         """Devuelve las líneas completas escritas desde la consulta anterior."""
-        lines: list[str] = []
+        return [line for _path, line in self.poll_with_source()]
+
+    def poll_with_source(self) -> list[tuple[Path, str]]:
+        """Como 'poll', pero cada línea va acompañada del fichero del que procede."""
+        lines: list[tuple[Path, str]] = []
         for path in _session_log_files(self._root):
             start = self._offsets.get(path, 0)
             try:
@@ -153,7 +191,7 @@ class LogFollower:
                 continue
             self._offsets[path] = start + last_newline + 1
             text = data[: last_newline + 1].decode("utf-8", errors="replace")
-            lines.extend(text.splitlines())
+            lines.extend((path, line) for line in text.splitlines())
         return lines
 
 
