@@ -128,7 +128,7 @@ necesitas Python ni permisos de administrador.
 ## Para saber más
 
 En el artículo [Programar con agentes de IA a coste cero: cuotas, contexto y continuidad](https://gabimarti.medium.com/programar-con-agentes-de-ia-a-coste-cero-cuotas-contexto-y-continuidad-624b245177de)
-(Medium) cuento por qué nació AgySwitcher y cómo organizo un proyecto para poder cambiar de
+(Medium, también en [dev.to](https://dev.to/gabimarti/programar-con-agentes-de-ia-a-coste-cero-cuotas-contexto-y-continuidad-249b)) cuento por qué nació AgySwitcher y cómo organizo un proyecto para poder cambiar de
 cuenta o de agente sin perder el contexto.
 
 ## Apoya el proyecto
