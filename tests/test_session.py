@@ -236,3 +236,12 @@ def test_log_follower_reads_new_and_recreated_files_from_start(tmp_path: Path) -
 def test_log_follower_missing_dir_returns_nothing(tmp_path: Path) -> None:
     """Sin carpeta de logs no falla."""
     assert LogFollower(tmp_path / "no-existe").poll() == []
+
+
+def test_extract_login_email_requires_glog_header() -> None:
+    """Solo cuenta el evento escrito por agy en una línea de log, no un texto que lo imite."""
+    text = (
+        "respuesta del modelo: OAuth: authenticated successfully as falso@example.com\n" + LOGIN_A
+    )
+    assert extract_login_email(text) == "a@example.com"
+    assert extract_login_email("OAuth: authenticated successfully as x@example.com\n") is None

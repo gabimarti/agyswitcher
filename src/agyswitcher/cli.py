@@ -48,14 +48,25 @@ from agyswitcher.config import (
     save_settings,
 )
 from agyswitcher.credman import (
+    SLOT_MISMATCH,
+    SLOT_OK,
+    SLOT_ORPHAN,
     CredManError,
+    CredManPlatformError,
     SlotCapture,
     capture_active_slot,
     delete_slot,
+    find_alias_for_email,
+    get_active_email,
+    get_slot_email,
     has_slot,
     list_slot_aliases,
+    list_slots,
     promote_slot_to_active,
     save_slot_from_active,
+)
+from agyswitcher.credman import (
+    is_available as credman_is_available,
 )
 from agyswitcher.dashboard import build_dashboard_view
 from agyswitcher.doctor import CheckStatus, DoctorOptions, run_doctor, worst_status
@@ -358,6 +369,33 @@ def _refresh_active_quota_if_stale(
     return False
 
 
+def _active_session_email() -> str | None:
+    """Email de la sesión de agy: Credential Manager primero y, si no hay, sus registros."""
+    try:
+        email = get_active_email()
+    except CredManError:
+        email = None
+    return email or detect_active_email()
+
+
+def _discard_foreign_slot(alias: str, email: str | None) -> None:
+    """Borra un slot previo con este alias que no sea de ``email`` (por ejemplo, de una cuenta
+    eliminada fuera de AgySwitcher), para que nunca se promueva la sesión de otra cuenta."""
+    try:
+        if not has_slot(alias):
+            return
+        slot_email = get_slot_email(alias)
+        if email and slot_email and slot_email.lower() == email.lower():
+            return
+        delete_slot(alias)
+    except CredManError:
+        return
+    console.print(
+        f"[yellow]Había un slot antiguo con el alias '{escape(alias)}' de otra sesión "
+        f"({escape(slot_email or 'desconocida')}): se ha borrado.[/yellow]"
+    )
+
+
 def _capture_active_slot(accounts: dict[str, Account]) -> SlotCapture | None:
     """Crea o actualiza el slot de la sesión activa de agy si es de una cuenta registrada.
 
@@ -375,6 +413,34 @@ def _capture_active_slot(accounts: dict[str, Account]) -> SlotCapture | None:
             "cuenta ya no necesitará el navegador.[/dim]"
         )
     return capture
+
+
+CREDMAN_CONFIRM_ATTEMPTS = 5
+"""Lecturas de Credential Manager para confirmar un inicio de sesión visto en los logs."""
+
+CREDMAN_CONFIRM_INTERVAL = 0.5
+"""Segundos entre lecturas: agy puede tardar un momento en guardar la sesión."""
+
+
+def _credman_confirms_login(expected_email: str) -> bool:
+    """Confirma con Credential Manager que la sesión guardada es de ``expected_email``.
+
+    Los logs son el aviso; Credential Manager, la fuente de verdad. Si Credential Manager no
+    está disponible (no Windows o deshabilitado), se acepta la verificación por logs.
+    """
+    if not credman_is_available():
+        return True
+    expected = expected_email.strip().lower()
+    for attempt in range(CREDMAN_CONFIRM_ATTEMPTS):
+        try:
+            email = get_active_email()
+        except CredManError:
+            email = None
+        if email and email.lower() == expected:
+            return True
+        if attempt < CREDMAN_CONFIRM_ATTEMPTS - 1:
+            time.sleep(CREDMAN_CONFIRM_INTERVAL)
+    return False
 
 
 def _guided_account_switch(
@@ -447,6 +513,16 @@ def _guided_account_switch(
 
     result = wait_for_login(target_email, offsets, timeout=timeout, on_other_login=_on_other_login)
 
+    if result.status is LoginWaitStatus.VERIFIED and not _credman_confirms_login(target_email):
+        typer.secho(
+            f"\nLos registros de agy indican un inicio de sesión con {target_email}, pero la "
+            "sesión guardada en Windows no es de esa cuenta: no se registra el cambio. "
+            "Ejecuta 'agyswitcher sync' para comprobar qué sesión tiene agy.",
+            fg=typer.colors.YELLOW,
+        )
+        typer.secho(keep_msg, fg=typer.colors.YELLOW)
+        raise typer.Exit(code=1)
+
     if result.status is LoginWaitStatus.VERIFIED:
         try:
             save_slot_from_active(target_alias, expected_email=target_email)
@@ -481,36 +557,138 @@ def _guided_account_switch(
     raise typer.Exit(code=1)
 
 
+def _is_interactive() -> bool:
+    """True si hay una terminal interactiva para preguntar al usuario."""
+    return sys.stdin.isatty()
+
+
+def _confirm_agy_closed(force: bool) -> bool:
+    """Comprueba que no hay agy ni el IDE abiertos antes de cambiar la credencial activa.
+
+    Una sesión abierta conserva en memoria la cuenta anterior y, al renovar su token (cada
+    hora), la vuelve a escribir en Credential Manager, deshaciendo el cambio. Si hay sesiones
+    abiertas, guía al usuario y pregunta: reintentar, continuar igualmente o abortar.
+
+    Returns:
+        True si se puede continuar; False si el usuario aborta o no se puede preguntar.
+    """
+    if force:
+        return True
+    running = find_running_agy_processes()
+    while running:
+        console.print(
+            Panel(
+                f"Hay sesiones abiertas: [bold]{', '.join(escape(r) for r in running)}[/bold].\n\n"
+                "Una sesión abierta sigue con la cuenta anterior y, al renovar su token, puede "
+                "volver a guardarla y deshacer el cambio.\n\n"
+                "  1. Sal de agy con [bold cyan]/exit[/bold cyan] en cada terminal.\n"
+                "  2. Cierra el IDE de Antigravity si lo tienes abierto.",
+                title="Cierra agy antes de cambiar de cuenta",
+                box=box.ROUNDED,
+            )
+        )
+        if not _is_interactive():
+            typer.secho(
+                "Sin terminal interactiva no se puede confirmar. Cierra agy o usa --force.",
+                fg=typer.colors.YELLOW,
+            )
+            return False
+        choice = typer.prompt(
+            "[R]eintentar, [C]ontinuar igualmente o [A]bortar",
+            default="A",
+            show_default=True,
+        )
+        answer = choice.strip().lower()[:1]
+        if answer == "r":
+            running = find_running_agy_processes()
+            continue
+        if answer == "c":
+            console.print(
+                "[yellow]Reinicia las sesiones abiertas para que usen la cuenta nueva.[/yellow]"
+            )
+            return True
+        return False
+    if running is None:
+        console.print(
+            "[yellow]No se pudo comprobar si hay sesiones de agy abiertas. Si las hay, "
+            "ciérralas antes de continuar.[/yellow]"
+        )
+        if not _is_interactive():
+            typer.secho(
+                "Sin terminal interactiva no se puede confirmar. Usa --force.",
+                fg=typer.colors.YELLOW,
+            )
+            return False
+        return typer.confirm("¿Continuar con el cambio de cuenta?", default=False)
+    return True
+
+
+def _save_outgoing_session(accounts: dict[str, Account], state: AppState) -> None:
+    """Guarda la sesión saliente en el slot de su dueño real antes de reemplazarla.
+
+    El dueño se decide por el email de la credencial activa, no por ``state.active``: si el
+    estado estaba desfasado, la sesión va al slot de su cuenta y se avisa; si no es de ninguna
+    cuenta registrada, no se guarda en ningún slot.
+    """
+    try:
+        active_email = get_active_email()
+    except CredManError:
+        return
+    if not active_email:
+        return
+    owner = find_alias_for_email(active_email, {a: acc.email for a, acc in accounts.items()})
+    if owner is None:
+        console.print(
+            f"[yellow]La sesión actual de agy ({escape(active_email)}) no es de ninguna cuenta "
+            "registrada: no se guarda en ningún slot.[/yellow]"
+        )
+        return
+    if state.active and owner != state.active:
+        console.print(
+            f"[yellow]agy tenía la sesión de '{escape(owner)}', no de '{escape(state.active)}': "
+            f"se guarda en el slot de '{escape(owner)}'.[/yellow]"
+        )
+    _capture_active_slot(accounts)
+
+
 def _switch_account(
     target_alias: str,
     target_pool: str,
     accounts: dict[str, Account],
     state: AppState,
     timeout: float,
+    force: bool = False,
 ) -> str:
     """Cambia de cuenta con conmutación instantánea si tiene slot CredMan, o guiada si no.
 
-    Si existe un slot CredMan para target_alias, promueve la credencial a la sesión activa
-    en Windows Credential Manager sincronizando la saliente si es necesario.
-    Si falla la promoción o no existe el slot, recurre a _guided_account_switch.
+    Con slot (y email registrado): comprueba que agy está cerrado, guarda la sesión saliente
+    en el slot de su dueño y promueve el slot destino. Si falla la promoción, no hay slot o
+    la cuenta no tiene email, recurre a _guided_account_switch.
 
     Returns:
         Mensaje del cambio registrado.
+
+    Raises:
+        typer.Exit: Con código 1 si el usuario aborta o no se registra el cambio.
     """
-    if has_slot(target_alias):
-        target_acc = accounts.get(target_alias)
-        target_email = target_acc.email if target_acc else None
-        outgoing_alias = state.active if (state.active and state.active in accounts) else None
-        try:
-            active_email = promote_slot_to_active(
-                alias=target_alias,
-                expected_email=target_email,
-                sync_outgoing_alias=outgoing_alias,
+    target_acc = accounts.get(target_alias)
+    target_email = target_acc.email if target_acc else None
+    if target_email and has_slot(target_alias):
+        if not _confirm_agy_closed(force):
+            typer.secho(
+                f"Cambio cancelado. La cuenta activa sigue siendo '{state.active or 'ninguna'}'.",
+                fg=typer.colors.YELLOW,
             )
-            if target_acc and not target_acc.email and active_email:
-                target_acc.email = active_email
-                with contextlib.suppress(ConfigError):
-                    save_accounts(accounts)
+            raise typer.Exit(code=1)
+        _save_outgoing_session(accounts, state)
+        try:
+            active_email = promote_slot_to_active(target_alias, target_email)
+        except CredManError as err:
+            console.print(
+                f"[yellow][!] Conmutación instantánea no disponible ({escape(str(err))}). "
+                "Iniciando cambio guiado como alternativa...[/yellow]"
+            )
+        else:
             try:
                 msg = record_rotation(target_alias, target_pool, state)
             except StateError as err:
@@ -520,22 +698,11 @@ def _switch_account(
                     fg=typer.colors.YELLOW,
                 )
                 raise typer.Exit(code=1) from err
-
             console.print(
-                f"[bold green]✓ Conmutación instantánea a '[/bold green][bold]{target_alias}[/bold][bold green]' realizada con éxito.[/bold green] [dim]({active_email})[/dim]"
+                f"[bold green]✓ Conmutación instantánea a '[/bold green][bold]{escape(target_alias)}"
+                f"[/bold][bold green]' realizada con éxito.[/bold green] [dim]({active_email})[/dim]"
             )
-            running = find_running_agy_processes()
-            if running:
-                console.print(
-                    f"[yellow]Aviso: Hay sesiones de agy abiertas ({', '.join(running)}). "
-                    "El cambio tendrá efecto en sesiones nuevas o al reiniciarlas.[/yellow]"
-                )
             return msg
-        except CredManError as err:
-            console.print(
-                f"[yellow][!] Conmutación instantánea no disponible ({err}). "
-                "Iniciando cambio guiado como alternativa...[/yellow]"
-            )
 
     return _guided_account_switch(target_alias, target_pool, accounts, state, timeout)
 
@@ -596,7 +763,7 @@ def add(
         )
         raise typer.Exit(code=1)
 
-    detected_email = detect_active_email()
+    detected_email = _active_session_email()
     target_email = clean_email or detected_email
 
     if target_email:
@@ -621,6 +788,7 @@ def add(
     except ConfigError as err:
         typer.secho(f"Error al guardar la configuración: {err}", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1) from err
+    _discard_foreign_slot(clean_alias, target_email)
 
     try:
         state = load_state()
@@ -746,8 +914,15 @@ def remove_account(
     state.accounts_quota.pop(clean_alias, None)
 
     slot_deleted = False
-    with contextlib.suppress(CredManError):
+    try:
         slot_deleted = delete_slot(clean_alias)
+    except CredManPlatformError:
+        pass
+    except CredManError as err:
+        console.print(
+            f"[yellow]No se pudo borrar el slot de sesión de '{escape(clean_alias)}' "
+            f"({escape(str(err))}). Bórralo con 'agyswitcher slots clean'.[/yellow]"
+        )
 
     if state.active == clean_alias:
         # La cuenta activa es la de la sesión de agy: no se puede elegir otra sin iniciar sesión.
@@ -792,6 +967,14 @@ def set_active(
         float,
         typer.Option("--timeout", help="Segundos máximos de espera del inicio de sesión."),
     ] = DEFAULT_LOGIN_TIMEOUT,
+    force: Annotated[
+        bool,
+        typer.Option(
+            "--force",
+            "-f",
+            help="No preguntar si hay sesiones de agy abiertas al hacer el cambio instantáneo.",
+        ),
+    ] = False,
 ) -> None:
     """Marca explícitamente una cuenta registrada como activa."""
     clean_alias = alias.strip()
@@ -817,7 +1000,7 @@ def set_active(
 
     switched = clean_alias != state.active
     if switched:
-        _switch_account(clean_alias, state.active_model_group, accounts, state, timeout)
+        _switch_account(clean_alias, state.active_model_group, accounts, state, timeout, force)
     else:
         try:
             save_state(state)
@@ -871,7 +1054,7 @@ def sync_active_account() -> None:
 
     detected_email = (
         report.active_email if report and report.active_email else None
-    ) or detect_active_email()
+    ) or _active_session_email()
     if not detected_email:
         typer.secho(
             "No se detectó ninguna sesión activa de Google en los logs de agy. "
@@ -1254,7 +1437,7 @@ def check_session_mismatch(
     Args:
         accounts: Diccionario de cuentas configuradas.
         active_alias: Alias de la cuenta actualmente activa.
-        detected_email: Email detectado (opcional; si es None se llama a detect_active_email()).
+        detected_email: Email detectado (opcional; si es None se usa _active_session_email()).
 
     Returns:
         None si no hay discrepancia detectada (o no se pudo detectar email).
@@ -1263,7 +1446,7 @@ def check_session_mismatch(
     if not active_alias:
         return None
     active_acc = accounts.get(active_alias)
-    email_to_check = detected_email if detected_email is not None else detect_active_email()
+    email_to_check = detected_email if detected_email is not None else _active_session_email()
     if not email_to_check:
         return None
 
@@ -2075,6 +2258,14 @@ def rotate(
         float,
         typer.Option("--timeout", help="Segundos máximos de espera del inicio de sesión."),
     ] = DEFAULT_LOGIN_TIMEOUT,
+    force: Annotated[
+        bool,
+        typer.Option(
+            "--force",
+            "-f",
+            help="No preguntar si hay sesiones de agy abiertas al hacer el cambio instantáneo.",
+        ),
+    ] = False,
 ) -> None:
     """Rota manualmente a la siguiente cuenta o pool disponible, o a un alias específico."""
     try:
@@ -2128,7 +2319,7 @@ def rotate(
             )
 
     if target_alias != state.active:
-        msg = _switch_account(target_alias, target_pool, accounts, state, timeout)
+        msg = _switch_account(target_alias, target_pool, accounts, state, timeout, force)
         typer.secho(msg, fg=typer.colors.GREEN)
         _print_resume_hint()
         _refresh_quota_after_switch(target_alias, accounts, state)
@@ -2294,6 +2485,109 @@ _DOCTOR_LABELS = {
 }
 
 
+_SLOT_STATUS_LABELS = {
+    SLOT_OK: "[green]correcto[/green]",
+    SLOT_ORPHAN: "[yellow]sin cuenta registrada[/yellow]",
+    SLOT_MISMATCH: "[red]no es de su cuenta[/red]",
+}
+
+
+@app.command(
+    name="slots",
+    help=(
+        "Lista las sesiones guardadas (slots) en Windows Credential Manager o borra las que "
+        "sobran. Ejemplo: agyswitcher slots clean"
+    ),
+)
+def slots_command(
+    action: Annotated[
+        str,
+        typer.Argument(help="'list' (por defecto) o 'clean'."),
+    ] = "list",
+    all_slots: Annotated[
+        bool,
+        typer.Option(
+            "--all",
+            help="Con 'clean': borrar todos los slots, no solo los huérfanos o de otra cuenta.",
+        ),
+    ] = False,
+    force: Annotated[
+        bool,
+        typer.Option("--force", "-f", help="No pedir confirmación al borrar."),
+    ] = False,
+) -> None:
+    """Muestra o limpia los slots de sesión. Nunca muestra ni copia tokens."""
+    choice = action.strip().lower()
+    if choice not in {"list", "clean"}:
+        typer.secho("Error: usa 'list' o 'clean'.", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1)
+    try:
+        accounts = load_accounts()
+    except ConfigError as err:
+        typer.secho(f"Error de configuración: {err}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from err
+
+    if not credman_is_available():
+        console.print("Windows Credential Manager no está disponible: no hay slots.")
+        return
+    try:
+        slots = list_slots({alias: acc.email for alias, acc in accounts.items()})
+    except CredManError as err:
+        typer.secho(f"Error al leer los slots: {err}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from err
+
+    if choice == "list":
+        if slots:
+            table = Table(title="Slots de sesión", box=box.ROUNDED, header_style="bold cyan")
+            table.add_column("Cuenta")
+            table.add_column("Email de la sesión guardada")
+            table.add_column("Estado")
+            for info in slots:
+                table.add_row(
+                    escape(info.alias),
+                    escape(info.email or "ilegible"),
+                    _SLOT_STATUS_LABELS[info.status],
+                )
+            console.print(table)
+        else:
+            console.print("No hay slots guardados.")
+        with_slot = {s.alias for s in slots if s.status == SLOT_OK}
+        missing = sorted(a for a in accounts if a not in with_slot)
+        if missing:
+            console.print(
+                f"Sin slot: {escape(', '.join(missing))}. Prepara cada una una vez con "
+                "[bold cyan]agyswitcher set-active <alias>[/bold cyan] (cambio guiado)."
+            )
+        if any(s.status != SLOT_OK for s in slots):
+            console.print("[yellow]Borra los que sobran con 'agyswitcher slots clean'.[/yellow]")
+        return
+
+    targets = slots if all_slots else [s for s in slots if s.status != SLOT_OK]
+    if not targets:
+        console.print("No hay slots que borrar.")
+        return
+    console.print("Se borrarán los slots de: " + escape(", ".join(s.alias for s in targets)))
+    if all_slots:
+        console.print(
+            "[yellow]Después, el primer cambio a cada cuenta volverá a pedir el navegador. "
+            "La sesión actual de agy no se toca.[/yellow]"
+        )
+    if not force and not typer.confirm("¿Continuar?", default=False):
+        console.print("[yellow]Operación cancelada.[/yellow]")
+        return
+    deleted = 0
+    for info in targets:
+        try:
+            if delete_slot(info.alias):
+                deleted += 1
+        except CredManError as err:
+            console.print(
+                f"[yellow]No se pudo borrar el slot de '{escape(info.alias)}': "
+                f"{escape(str(err))}[/yellow]"
+            )
+    typer.secho(f"Slots borrados: {deleted}.", fg=typer.colors.GREEN)
+
+
 @app.command(name="doctor")
 def doctor(
     show_emails: Annotated[
@@ -2313,7 +2607,7 @@ def doctor(
     checks = run_doctor(
         Path.cwd(),
         DoctorOptions(show_emails=show_emails),
-        email_detector=detect_active_email,
+        email_detector=_active_session_email,
         process_lister=find_running_agy_processes,
     )
     table = Table(box=box.ROUNDED, title="Diagnóstico de AgySwitcher", show_lines=False)

@@ -217,5 +217,12 @@ begin
   begin
     RemoveFromPath(ExpandConstant('{app}'));
     RemoveAgyVariable();
+    { Las sesiones guardadas (slots) no se borran sin pedirlo: solo se informa. }
+    if not UninstallSilent then
+      MsgBox('Las sesiones guardadas de tus cuentas (slots) siguen en el Administrador de '
+        + 'credenciales de Windows, por si vuelves a instalar AgySwitcher.' + #13#10#13#10
+        + 'Para borrarlas: Panel de control > Administrador de credenciales > Credenciales '
+        + 'de Windows, las que empiezan por "gemini:antigravity:slot:". No borres '
+        + '"gemini:antigravity": es la sesión de agy.', mbInformation, MB_OK);
   end;
 end;

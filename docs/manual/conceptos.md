@@ -81,6 +81,12 @@ Al ejecutar `agyswitcher set-active <alias>` o `agyswitcher rotate`:
 Si inicias sesión con otra cuenta te avisa y sigue esperando; si cancelas (`Ctrl+C`) o se
 acaba el tiempo, la cuenta activa no cambia.
 
+Para saber qué cuenta tiene la sesión, AgySwitcher consulta primero el Administrador de
+credenciales (la sesión que `agy` usa de verdad) y, si no puede, los registros de `agy`. Un
+slot solo se usa si su email coincide con el de su cuenta: así nunca se activa la sesión de
+otra cuenta por error. Con `agy` abierto, el cambio instantáneo te pide confirmación, porque
+una sesión abierta puede volver a guardar la cuenta anterior.
+
 Si cambias de cuenta directamente en `agy` (`/logout` y `/login`), AgySwitcher guarda el slot
 de esa cuenta en cuanto ve la sesión: al ejecutar `list`, `status`, `sync` o al terminar
 `run`. Hacer `/logout` no invalida el slot que ya tenías guardado de la cuenta anterior.

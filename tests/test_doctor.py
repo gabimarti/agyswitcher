@@ -15,6 +15,7 @@ from typer.testing import CliRunner
 from agyswitcher import doctor
 from agyswitcher.cli import app
 from agyswitcher.config import save_accounts
+from agyswitcher.credman import SlotInfo
 from agyswitcher.doctor import (
     Check,
     CheckStatus,
@@ -196,7 +197,11 @@ def test_check_session_other_account_is_warning() -> None:
     )
     assert check.status is CheckStatus.WARN
     assert "trabajo" in check.detail
-    assert check.hint is not None and "set-active trabajo" in check.hint
+    assert (
+        check.hint is not None
+        and "agyswitcher sync" in check.hint
+        and "set-active personal" in check.hint
+    )
 
 
 def test_check_session_unknown_or_missing() -> None:
@@ -352,3 +357,45 @@ def test_cli_doctor_exit_codes_and_masking(
 
     shown = runner.invoke(app, ["doctor", "--show-emails"])
     assert "personal@example.com" in shown.output
+
+
+def _slot(alias: str, email: str | None, status: str) -> SlotInfo:
+
+    return SlotInfo(alias=alias, email=email, status=status)
+
+
+def test_check_slots_without_credman_is_info() -> None:
+    check = doctor.check_slots(_accounts(), None, DoctorOptions())
+    assert check.status is CheckStatus.INFO
+    assert "no disponible" in check.detail
+
+
+def test_check_slots_all_prepared_is_ok() -> None:
+    slots = [
+        _slot("personal", "personal@example.com", "ok"),
+        _slot("trabajo", "trabajo@example.com", "ok"),
+    ]
+    check = doctor.check_slots(_accounts(), slots, DoctorOptions())
+    assert check.status is CheckStatus.OK
+    assert check.detail == "2 de 2 cuentas con slot"
+
+
+def test_check_slots_lists_accounts_without_slot() -> None:
+    slots = [_slot("personal", "personal@example.com", "ok")]
+    check = doctor.check_slots(_accounts(), slots, DoctorOptions())
+    assert check.status is CheckStatus.INFO
+    assert "Sin slot: trabajo" in check.detail
+    assert check.hint is not None and "set-active" in check.hint
+
+
+def test_check_slots_warns_orphan_and_mismatched_masking_emails() -> None:
+    slots = [
+        _slot("personal", "otra@example.com", "mismatch"),
+        _slot("vieja", "vieja@example.com", "orphan"),
+    ]
+    check = doctor.check_slots(_accounts(), slots, DoctorOptions())
+    assert check.status is CheckStatus.WARN
+    assert "sin cuenta registrada: vieja" in check.detail
+    assert "personal (" in check.detail
+    assert "otra@example.com" not in check.detail  # enmascarado por defecto
+    assert check.hint is not None and "slots clean" in check.hint

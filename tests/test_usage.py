@@ -341,21 +341,24 @@ def test_detect_active_email_reads_only_the_end_of_big_logs(
     monkeypatch.setattr("agyswitcher.session.MAX_NEW_BYTES_PER_FILE", 1024)
     cli_log = tmp_path / "cli.log"
     cli_log.write_text(
-        "OAuth: authenticated successfully as viejo@example.com\n" + ("x" * 80 + "\n") * 100,
+        "I1124 10:00:00.000000  1 server_oauth.go:226] OAuth: authenticated successfully as viejo@example.com\n"
+        + ("x" * 80 + "\n") * 100,
         encoding="utf-8",
     )
     assert detect_active_email(base_dir=tmp_path) is None
 
     with cli_log.open("a", encoding="utf-8") as handle:
-        handle.write("OAuth: authenticated successfully as nuevo@example.com\n")
+        handle.write(
+            "I1124 10:00:00.000000  1 server_oauth.go:226] OAuth: authenticated successfully as nuevo@example.com\n"
+        )
     assert detect_active_email(base_dir=tmp_path) == "nuevo@example.com"
 
 
 def test_detect_active_email_ignores_malformed_addresses(tmp_path: Path) -> None:
     cli_log = tmp_path / "cli.log"
     cli_log.write_text(
-        "OAuth: authenticated successfully as valido@example.com\n"
-        "OAuth: authenticated successfully as sin-dominio@localhost\n",
+        "I1124 10:00:00.000000  1 server_oauth.go:226] OAuth: authenticated successfully as valido@example.com\n"
+        "I1124 10:00:00.000000  1 server_oauth.go:226] OAuth: authenticated successfully as sin-dominio@localhost\n",
         encoding="utf-8",
     )
     assert detect_active_email(base_dir=tmp_path) == "valido@example.com"
@@ -415,3 +418,27 @@ def test_is_quota_stale_considers_ttl() -> None:
     assert is_quota_stale(info_fresh, ttl_seconds=30.0, now=now) is True
     assert is_quota_stale(info_stale, ttl_seconds=300.0, now=now) is False
     assert DEFAULT_QUOTA_TTL_SECONDS == 180.0
+
+
+def test_detect_active_email_ignores_lines_without_glog_header(tmp_path: Path) -> None:
+    """Un texto que imita el evento pero no es una línea de log de agy no cuenta."""
+    cli_log = tmp_path / "cli.log"
+    cli_log.write_text(
+        "I1124 10:00:00.000000  1 server_oauth.go:226] OAuth: authenticated successfully as "
+        "real@example.com\n"
+        "usuario dijo: OAuth: authenticated successfully as falso@example.com\n"
+        "I1124 10:00:01.000000  1 chat.go:10] Cache(userInfo) otro@example.com\n",
+        encoding="utf-8",
+    )
+    assert detect_active_email(base_dir=tmp_path) == "real@example.com"
+
+
+def test_detect_active_email_rejects_non_ascii_addresses(tmp_path: Path) -> None:
+    """Los emails con caracteres no ASCII no se aceptan como sesión de agy."""
+    cli_log = tmp_path / "cli.log"
+    cli_log.write_text(
+        "I1124 10:00:00.000000  1 server_oauth.go:226] OAuth: authenticated successfully as "
+        "usuarió@exámple.com\n",
+        encoding="utf-8",
+    )
+    assert detect_active_email(base_dir=tmp_path) is None

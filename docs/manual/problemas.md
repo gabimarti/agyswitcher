@@ -14,6 +14,22 @@ guardará el slot automáticamente y los próximos cambios a esa cuenta serán i
 Si iniciaste sesión directamente en `agy` (`/logout` y `/login`) sin pasar por AgySwitcher, el
 slot se guarda la próxima vez que ejecutes `agyswitcher list`, `status`, `run` o `sync`.
 
+**«Cierra agy antes de cambiar de cuenta».**
+Hay una sesión de `agy` o del IDE de Antigravity abierta. Sal con `/exit` en cada terminal y
+cierra el IDE; después elige **[R]eintentar**. Si eliges **[C]ontinuar igualmente**, reinicia
+esas sesiones en cuanto puedas: si no, al renovar su token pueden volver a guardar la cuenta
+anterior (lo verás en `agyswitcher status` o `doctor` como desajuste; arréglalo con
+`agyswitcher sync`). En scripts sin terminal, usa `--force`.
+
+**«La sesión guardada en Windows no es de esa cuenta».**
+Los registros de `agy` decían que habías iniciado sesión con la cuenta destino, pero el
+Administrador de credenciales tiene otra. El cambio no se registra. Ejecuta
+`agyswitcher sync` para ver qué sesión tiene `agy` y repite el cambio.
+
+**`doctor` avisa de slots «sin cuenta registrada» o que «no son de su cuenta».**
+Quedaron de cuentas eliminadas o de sesiones antiguas. Bórralos con `agyswitcher slots clean`
+y, si hace falta, prepara de nuevo el slot de esa cuenta con `agyswitcher set-active <alias>`.
+
 **`set-active` sigue esperando y no termina.**
 AgySwitcher espera a que inicies sesión en `agy` con el email indicado. En una ventana de
 `agy` ejecuta `/logout` e inicia sesión en el navegador con **ese** email. Si necesitas más

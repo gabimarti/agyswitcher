@@ -34,6 +34,16 @@ from agyswitcher.config import (
     load_accounts,
     load_settings,
 )
+from agyswitcher.credman import (
+    SLOT_MISMATCH,
+    SLOT_OK,
+    SLOT_ORPHAN,
+    CredManError,
+    SlotInfo,
+    get_active_email,
+    list_slots,
+)
+from agyswitcher.credman import is_available as credman_is_available
 from agyswitcher.models import Account, AppState
 from agyswitcher.project import (
     PROJECT_CONFIG_NAME,
@@ -286,7 +296,7 @@ def check_session(
     session_email: str | None,
     options: DoctorOptions,
 ) -> Check:
-    """Sesión de agy detectada en sus logs frente a la cuenta activa de AgySwitcher."""
+    """Sesión de agy (Credential Manager o sus logs) frente a la cuenta activa de AgySwitcher."""
     if session_email is None:
         return Check(
             "Sesión de agy",
@@ -316,8 +326,9 @@ def check_session(
             "Sesión de agy",
             CheckStatus.WARN,
             f"{shown} ('{owner}'), pero la cuenta activa es '{state.active}'.",
-            f"Ejecuta 'agyswitcher set-active {owner}' o inicia sesión en agy con la cuenta "
-            f"'{state.active}'. Mientras no coincidan, la cuota se atribuye a '{owner}'.",
+            "Ejecuta 'agyswitcher sync' para que AgySwitcher refleje la sesión real, o "
+            f"'agyswitcher set-active {state.active}' para volver a esa cuenta. Mientras no "
+            f"coincidan, la cuota se atribuye a '{owner}'.",
         )
     return Check("Sesión de agy", CheckStatus.OK, f"{shown} ('{owner}')")
 
@@ -396,6 +407,49 @@ def check_quota_data(accounts: dict[str, Account], state: AppState, now: datetim
     return checks
 
 
+def check_slots(
+    accounts: dict[str, Account], slots: list[SlotInfo] | None, options: DoctorOptions
+) -> Check:
+    """Slots de sesión: huérfanos, de otra cuenta y cuentas que aún no tienen slot."""
+    if slots is None:
+        return Check(
+            "Slots de sesión",
+            CheckStatus.INFO,
+            "Credential Manager no disponible: no hay conmutación instantánea.",
+        )
+    orphans = [s.alias for s in slots if s.status == SLOT_ORPHAN]
+    mismatched = [s for s in slots if s.status == SLOT_MISMATCH]
+    if orphans or mismatched:
+        parts = []
+        if orphans:
+            parts.append(f"sin cuenta registrada: {', '.join(orphans)}")
+        if mismatched:
+            shown = ", ".join(
+                f"{s.alias} ({_show_email(s.email, options) if s.email else 'ilegible'})"
+                for s in mismatched
+            )
+            parts.append(f"no son de su cuenta: {shown}")
+        return Check(
+            "Slots de sesión",
+            CheckStatus.WARN,
+            "; ".join(parts) + ".",
+            "Bórralos con 'agyswitcher slots clean' y prepara de nuevo el slot de esas cuentas "
+            "con un 'agyswitcher set-active <alias>' guiado.",
+        )
+    with_slot = {s.alias for s in slots if s.status == SLOT_OK}
+    missing = sorted(a for a in accounts if a not in with_slot)
+    detail = f"{len(with_slot)} de {len(accounts)} cuentas con slot"
+    if missing:
+        return Check(
+            "Slots de sesión",
+            CheckStatus.INFO,
+            f"{detail}. Sin slot: {', '.join(missing)}.",
+            "Prepara su slot una sola vez con 'agyswitcher set-active <alias>' (cambio guiado): "
+            "después cambiarás a ellas sin navegador.",
+        )
+    return Check("Slots de sesión", CheckStatus.OK, detail)
+
+
 def check_agy_processes(processes: list[str] | None) -> Check:
     """Procesos de agy o del IDE abiertos (informativo)."""
     if processes is None:
@@ -467,13 +521,33 @@ def check_project(cwd: Path, global_low_quota: int | None) -> list[Check]:
 # ---------------------------------------------------------------------------
 
 
+def session_email() -> str | None:
+    """Email de la sesión de agy: Credential Manager primero y, si no hay, sus registros."""
+    try:
+        email = get_active_email()
+    except CredManError:
+        email = None
+    return email or detect_active_email()
+
+
+def read_slots(accounts: dict[str, Account]) -> list[SlotInfo] | None:
+    """Inventario de slots (solo metadatos); None si Credential Manager no está disponible."""
+    if not credman_is_available():
+        return None
+    try:
+        return list_slots({alias: acc.email for alias, acc in accounts.items()})
+    except CredManError:
+        return None
+
+
 def run_doctor(
     cwd: Path,
     options: DoctorOptions | None = None,
     now: datetime | None = None,
     *,
-    email_detector: Callable[[], str | None] = detect_active_email,
+    email_detector: Callable[[], str | None] = session_email,
     process_lister: Callable[[], list[str] | None] = find_running_agy_processes,
+    slot_reader: Callable[[dict[str, Account]], list[SlotInfo] | None] = read_slots,
 ) -> list[Check]:
     """Ejecuta todas las comprobaciones en orden y devuelve sus resultados."""
     opts = options or DoctorOptions()
@@ -511,6 +585,7 @@ def run_doctor(
     if accounts is not None and state is not None:
         checks.append(check_active_account(accounts, state))
         checks.append(check_session(accounts, state, email_detector(), opts))
+        checks.append(check_slots(accounts, slot_reader(accounts), opts))
         checks.extend(check_quota_data(accounts, state, moment))
     checks.append(check_agy_processes(process_lister()))
     checks.extend(check_project(cwd, settings.low_quota_percent if settings else None))

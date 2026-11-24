@@ -20,8 +20,9 @@ from __future__ import annotations
 
 import ctypes
 import json
+import os
 import sys
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from ctypes import wintypes
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -113,8 +114,20 @@ PCREDENTIALW = ctypes.POINTER(CREDENTIALW)
 PPCREDENTIALW = ctypes.POINTER(PCREDENTIALW)
 
 
+DISABLE_ENV_VAR = "AGYSWITCHER_DISABLE_CREDMAN"
+"""Si vale '1', AgySwitcher no usa Credential Manager (demos, simulaciones y pruebas)."""
+
+
 def _get_advapi32() -> Any:
-    """Carga y configura los prototipos de función de Advapi32.dll en Windows."""
+    """Carga y configura los prototipos de función de Advapi32.dll en Windows.
+
+    Raises:
+        CredManPlatformError: Fuera de Windows o con AGYSWITCHER_DISABLE_CREDMAN=1.
+    """
+    if os.environ.get(DISABLE_ENV_VAR, "").strip() == "1":
+        raise CredManPlatformError(
+            f"Credential Manager deshabilitado por la variable {DISABLE_ENV_VAR}."
+        )
     if sys.platform != "win32":
         raise CredManPlatformError(
             "Windows Credential Manager solo está disponible en la plataforma Windows."
@@ -545,44 +558,31 @@ def capture_active_slot(emails_by_alias: Mapping[str, str | None]) -> SlotCaptur
     return SlotCapture(alias=alias, email=email, created=current is None)
 
 
-def promote_slot_to_active(
-    alias: str,
-    expected_email: str | None = None,
-    sync_outgoing_alias: str | None = None,
-) -> str:
+def promote_slot_to_active(alias: str, expected_email: str) -> str:
     """Promueve el slot 'gemini:antigravity:slot:<alias>' a la credencial activa 'gemini:antigravity'.
+
+    No guarda la sesión saliente: quien llama debe hacerlo antes con 'capture_active_slot', que
+    la guarda en el slot de su dueño real (por su email) y no en el de la cuenta que el estado
+    cree activa. Tras escribir, relee la credencial activa y comprueba su email.
 
     Args:
         alias: Alias de la cuenta cuyo slot se activará.
-        expected_email: Si se proporciona, valida que el slot pertenezca a este email.
-        sync_outgoing_alias: Si se proporciona, sincroniza primero la sesión activa actual
-            en su slot correspondiente antes de ser reemplazada, garantizando que no se
-            pierdan rotaciones de tokens recientes.
+        expected_email: Email registrado de la cuenta; el slot debe pertenecer a él.
 
     Returns:
         El email verificado de la cuenta que ha quedado activa.
 
     Raises:
+        CredManEmailMismatchError: Si falta expected_email o el slot es de otro email.
         CredManNotFoundError: Si el slot solicitado no existe.
         CredManCorruptError: Si el blob del slot está corrupto o incompleto.
-        CredManEmailMismatchError: Si el email del slot no coincide con expected_email.
+        CredManError: Si la relectura no confirma la escritura o falla una llamada Win32.
     """
-    # 1. Sincronizar cambios recientes de la cuenta saliente si se solicitó
-    if sync_outgoing_alias:
-        try:
-            current_active = read_credential(ACTIVE_TARGET)
-            if current_active and current_active.is_valid_agy_blob():
-                write_credential(
-                    target_name=slot_target_name(sync_outgoing_alias),
-                    blob=current_active.blob,
-                    user_name=current_active.user_name,
-                    persist=current_active.persist,
-                )
-        except CredManError:
-            # Si no se puede sincronizar la saliente, se continúa con la activación
-            pass
+    if not expected_email or not expected_email.strip():
+        raise CredManEmailMismatchError(
+            f"La cuenta '{alias}' no tiene email registrado: no se puede comprobar su slot."
+        )
 
-    # 2. Leer credencial del slot destino
     slot_target = slot_target_name(alias)
     slot_cred = read_credential(slot_target)
     if slot_cred is None:
@@ -601,19 +601,85 @@ def promote_slot_to_active(
             f"No se pudo extraer un correo electrónico válido del slot '{alias}'."
         )
 
-    if expected_email and slot_email.lower() != expected_email.lower():
+    if slot_email.lower() != expected_email.strip().lower():
         raise CredManEmailMismatchError(
             f"El slot '{alias}' pertenece a '{slot_email}', pero se esperaba '{expected_email}'."
         )
 
-    # 3. Escribir en el target principal de agy
     write_credential(
         target_name=ACTIVE_TARGET,
         blob=slot_cred.blob,
         user_name=slot_cred.user_name,
         persist=slot_cred.persist,
     )
+
+    written = read_credential(ACTIVE_TARGET)
+    if written is None or written.blob != slot_cred.blob:
+        raise CredManError(
+            f"No se pudo confirmar la sesión de '{alias}' en '{ACTIVE_TARGET}' tras escribirla "
+            "(¿otro programa la ha cambiado a la vez?)."
+        )
     return slot_email
+
+
+def list_orphan_slots(known_aliases: Iterable[str]) -> list[str]:
+    """Alias con slot en Credential Manager que no corresponden a ninguna cuenta registrada."""
+    known = set(known_aliases)
+    return [alias for alias in list_slot_aliases() if alias not in known]
+
+
+SLOT_OK = "ok"
+SLOT_ORPHAN = "orphan"
+SLOT_MISMATCH = "mismatch"
+
+
+@dataclass(frozen=True)
+class SlotInfo:
+    """Metadatos de un slot (nunca su contenido secreto)."""
+
+    alias: str
+    email: str | None
+    """Email de la sesión del slot; None si el slot no es legible."""
+    status: str
+    """SLOT_OK, SLOT_ORPHAN (alias sin cuenta) o SLOT_MISMATCH (no es de la cuenta)."""
+
+
+def list_slots(emails_by_alias: Mapping[str, str | None]) -> list[SlotInfo]:
+    """Inventario de los slots con su email y si corresponden a su cuenta registrada.
+
+    Un slot es huérfano si su alias no está registrado, y no coincidente si la cuenta no
+    tiene email, el slot no es legible o su email es otro (no debe promoverse nunca).
+
+    Returns:
+        Lista ordenada por alias; vacía si no hay Credential Manager.
+
+    Raises:
+        CredManError: Si falla una llamada Win32.
+    """
+    infos: list[SlotInfo] = []
+    for alias in list_slot_aliases():
+        try:
+            cred = read_credential(slot_target_name(alias))
+        except CredManPlatformError:
+            return []
+        email = cred.extract_email() if cred and cred.is_valid_agy_blob() else None
+        if alias not in emails_by_alias:
+            status = SLOT_ORPHAN
+        else:
+            account_email = emails_by_alias[alias]
+            same = bool(email and account_email and email.lower() == account_email.lower())
+            status = SLOT_OK if same else SLOT_MISMATCH
+        infos.append(SlotInfo(alias=alias, email=email, status=status))
+    return infos
+
+
+def is_available() -> bool:
+    """Indica si el Administrador de credenciales de Windows se puede usar en este sistema."""
+    try:
+        _get_advapi32()
+    except CredManPlatformError:
+        return False
+    return True
 
 
 def delete_slot(alias: str) -> bool:

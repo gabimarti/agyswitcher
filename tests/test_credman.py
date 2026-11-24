@@ -14,6 +14,7 @@ import pytest
 from agyswitcher.credman import (
     ACTIVE_TARGET,
     CRED_PERSIST_LOCAL_MACHINE,
+    DISABLE_ENV_VAR,
     ERROR_NOT_FOUND,
     FILETIME,
     SLOT_PREFIX,
@@ -32,7 +33,9 @@ from agyswitcher.credman import (
     get_active_email,
     get_slot_email,
     has_slot,
+    is_available,
     is_slot_target,
+    list_orphan_slots,
     list_slot_aliases,
     list_slot_targets,
     promote_slot_to_active,
@@ -331,43 +334,66 @@ def test_promote_slot_to_active_success(
         blob=_make_blob("destino@example.com"),
     )
 
-    email = promote_slot_to_active("destino")
+    email = promote_slot_to_active("destino", "destino@example.com")
     assert email == "destino@example.com"
 
     assert ACTIVE_TARGET in fake_credman
     assert fake_credman[ACTIVE_TARGET].extract_email() == "destino@example.com"
 
 
-def test_promote_slot_to_active_syncs_outgoing_account(
+def test_promote_slot_to_active_requires_expected_email(
     fake_credman: dict[str, CredentialData],
 ) -> None:
-    """promote_slot_to_active sincroniza la sesión saliente antes de promover la nueva."""
-    # Sesión activa actual (cuenta saliente con token renovado)
-    fake_credman[ACTIVE_TARGET] = CredentialData(
-        target_name=ACTIVE_TARGET,
-        user_name="antigravity",
-        blob=_make_blob("saliente@example.com", token={"access_token": "token_renovado"}),
-    )
+    """Sin email esperado no se promueve nada."""
+    slot = slot_target_name("destino")
+    fake_credman[slot] = CredentialData(slot, "antigravity", _make_blob("destino@example.com"))
 
-    # Slot de la cuenta entrante
-    slot_entrante = slot_target_name("entrante")
-    fake_credman[slot_entrante] = CredentialData(
-        target_name=slot_entrante,
-        user_name="antigravity",
-        blob=_make_blob("entrante@example.com"),
-    )
+    with pytest.raises(CredManEmailMismatchError):
+        promote_slot_to_active("destino", "")
+    assert ACTIVE_TARGET not in fake_credman
 
-    # Promover entrante con sincronización de la saliente
-    email = promote_slot_to_active("entrante", sync_outgoing_alias="saliente")
-    assert email == "entrante@example.com"
 
-    # La activa es ahora la entrante
+def test_promote_slot_to_active_does_not_touch_other_slots(
+    fake_credman: dict[str, CredentialData],
+) -> None:
+    """La promoción ya no copia la sesión saliente en ningún slot (lo hace capture_active_slot)."""
+    _set_active(fake_credman, _make_blob("saliente@example.com"))
+    slot = slot_target_name("entrante")
+    fake_credman[slot] = CredentialData(slot, "antigravity", _make_blob("entrante@example.com"))
+
+    assert promote_slot_to_active("entrante", "Entrante@example.com") == "entrante@example.com"
     assert fake_credman[ACTIVE_TARGET].extract_email() == "entrante@example.com"
+    assert [t for t in fake_credman if is_slot_target(t)] == [slot]
 
-    # El slot de la saliente recibió la sincronización con el token renovado
-    slot_saliente = slot_target_name("saliente")
-    assert slot_saliente in fake_credman
-    assert b"token_renovado" in fake_credman[slot_saliente].blob
+
+def test_promote_slot_to_active_verifies_written_credential(
+    fake_credman: dict[str, CredentialData], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Si al releer la credencial activa no es la del slot, la promoción falla."""
+    slot = slot_target_name("destino")
+    fake_credman[slot] = CredentialData(slot, "antigravity", _make_blob("destino@example.com"))
+    monkeypatch.setattr("agyswitcher.credman.write_credential", lambda **_kwargs: None)
+
+    with pytest.raises(CredManError, match="No se pudo confirmar"):
+        promote_slot_to_active("destino", "destino@example.com")
+
+
+def test_list_orphan_slots(fake_credman: dict[str, CredentialData]) -> None:
+    """Los slots sin cuenta registrada se listan como huérfanos."""
+    for alias in ("uno", "viejo"):
+        target = slot_target_name(alias)
+        fake_credman[target] = CredentialData(target, "antigravity", _make_blob())
+
+    assert list_orphan_slots(["uno", "dos"]) == ["viejo"]
+
+
+def test_disable_env_var_turns_credman_off(monkeypatch: pytest.MonkeyPatch) -> None:
+    """AGYSWITCHER_DISABLE_CREDMAN=1 hace que AgySwitcher no use Credential Manager."""
+    monkeypatch.undo()  # Sin el aislamiento de conftest, para probar la variable en sí.
+    monkeypatch.setenv(DISABLE_ENV_VAR, "1")
+    assert is_available() is False
+    assert get_active_email() is None
+    assert has_slot("cualquiera") is False
 
 
 def test_promote_slot_to_active_errors(
@@ -376,7 +402,7 @@ def test_promote_slot_to_active_errors(
     """promote_slot_to_active valida existencia, integridad y coincidencia de email."""
     # Slot no existe
     with pytest.raises(CredManNotFoundError):
-        promote_slot_to_active("inexistente")
+        promote_slot_to_active("inexistente", "x@example.com")
 
     # Slot corrupto
     bad_slot = slot_target_name("corrupto")
@@ -386,7 +412,7 @@ def test_promote_slot_to_active_errors(
         blob=b"corrupto",
     )
     with pytest.raises(CredManCorruptError):
-        promote_slot_to_active("corrupto")
+        promote_slot_to_active("corrupto", "x@example.com")
 
     # Discrepancia de email
     good_slot = slot_target_name("cuenta-a")

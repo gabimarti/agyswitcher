@@ -81,23 +81,32 @@ conversaciones, servidores MCP y *skills*, y se puede continuar el mismo proyect
 ```mermaid
 flowchart TD
     START["Inicio de cambio de cuenta<br/>(set-active / rotate)"] --> CHECK{"¿La cuenta destino<br/>tiene slot CredMan?"}
-    CHECK -- "Sí" --> PROMOTE["Promoción de slot:<br/>1. Sincronizar saliente en su slot (RTR)<br/>2. Copiar slot destino a gemini:antigravity<br/>3. Validar email del blob"]
+    CHECK -- "Sí (y con email)" --> CLOSED{"¿agy o el IDE<br/>abiertos?"}
+    CLOSED -- "No / Continuar / --force" --> PROMOTE["Promoción de slot:<br/>1. Guardar saliente en el slot de su dueño real<br/>2. Validar email del slot destino<br/>3. Copiar a gemini:antigravity y releer"]
+    CLOSED -- "Abortar" --> ABORT["Estado intacto"]
     PROMOTE --> SUCCESS{"¿Promoción OK?"}
     SUCCESS -- "Sí" --> INSTANT["✓ Conmutación instantánea<br/>Actualizar estado y cuota"]
     SUCCESS -- "No (error)" --> WARN["Aviso: slot fallido.<br/>Derivar a cambio guiado"]
     CHECK -- "No" --> GUIDED["Cambio guiado en navegador:<br/>_guided_account_switch"]
     WARN --> GUIDED
-    GUIDED --> CAPTURE["Tras verificar login en logs:<br/>Guardar nuevo slot en CredMan"]
+    GUIDED --> CAPTURE["Login visto en logs y confirmado<br/>en CredMan: guardar nuevo slot"]
     CAPTURE --> INSTANT
 ```
 
 1. **Vía A — Conmutación instantánea por slot (`credman.promote_slot_to_active`):**
-   - Si la cuenta destino dispone de slot `gemini:antigravity:slot:<destino>`:
-     - **Mitigación de Refresh Token Rotation (RTR):** Lee primero la sesión activa actual en
-       `gemini:antigravity` y actualiza el slot de la cuenta saliente (`sync_outgoing_alias`),
-       asegurando que renovaciones automáticas de tokens realizadas por `agy` no se pierdan.
-     - **Promoción:** Lee el slot de la cuenta destino, valida su integridad y que su
-       `id_token_email` coincida con el email registrado, y lo escribe en `gemini:antigravity`.
+   - Si la cuenta destino tiene email registrado y slot `gemini:antigravity:slot:<destino>`:
+     - **Sesiones abiertas (`_confirm_agy_closed`):** un `agy` abierto renueva su token cada
+       hora y lo reescribe en `gemini:antigravity`, lo que desharía el cambio. Si
+       `find_running_agy_processes` encuentra `agy.exe` o el IDE, se guía al usuario y se
+       pregunta reintentar/continuar/abortar (abortar por defecto); sin terminal interactiva se
+       aborta salvo `--force`; si no se pudo comprobar, se pide confirmación.
+     - **Sesión saliente (`_save_outgoing_session`):** `credman.get_active_email()` decide el
+       dueño real de la sesión activa; `capture_active_slot` la copia a **su** slot (aunque no
+       sea `state.active`, con aviso) para no perder renovaciones de token. Si no es de ninguna
+       cuenta registrada, no se guarda en ningún slot.
+     - **Promoción (`promote_slot_to_active(alias, expected_email)`):** el email es obligatorio;
+       valida integridad y que el `id_token_email` del slot coincida, escribe en
+       `gemini:antigravity` y relee la credencial para confirmar la escritura.
      - **Registro:** Actualiza `state.active`, registra la rotación en el historial y avisa
        si hay procesos `agy.exe` abiertos para que se reinicien.
      - El cambio es inmediato y no requiere navegador, `/logout` ni interacción web.
@@ -107,7 +116,11 @@ flowchart TD
      - Comprueba que la cuenta tenga email registrado.
      - Toma una marca de los logs (`snapshot_log_offsets`).
      - Instruye al usuario a ejecutar `/logout` e iniciar sesión en el navegador con el email.
-     - Sondea los logs hasta detectar `OAuth: authenticated successfully as <email>`.
+     - Sondea los logs hasta detectar `OAuth: authenticated successfully as <email>` (solo
+       líneas con cabecera glog, `session.GLOG_LINE_PREFIX`, y emails ASCII).
+     - **Confirmación en Credential Manager (`_credman_confirms_login`):** relee
+       `gemini:antigravity` (unos reintentos breves) y registra el cambio solo si su email es el
+       esperado. Sin Credential Manager disponible se acepta la verificación por logs.
      - **Captura automática:** Tras verificar el inicio de sesión, guarda automáticamente el
        slot `gemini:antigravity:slot:<destino>` para que los próximos cambios sean instantáneos.
        Si no puede guardarlo, lo avisa en lugar de ignorarlo.
@@ -124,7 +137,14 @@ flowchart TD
    - Comprobado con cuentas reales (2026-11-24): `/logout` en agy no revoca el token en Google,
      así que el slot guardado antes de un `/logout` sigue sirviendo para volver a esa cuenta.
 
-4. **Limpieza en `remove`:**
+4. **Integridad e inventario:** `add` borra un slot previo con el mismo alias que sea de
+   otro email (`_discard_foreign_slot`). `credman.list_slots` clasifica cada slot en correcto,
+   huérfano (alias sin cuenta) o no coincidente; lo usan `agyswitcher slots [list|clean]` y la
+   comprobación «Slots de sesión» de `doctor`. La variable `AGYSWITCHER_DISABLE_CREDMAN=1`
+   desactiva Credential Manager (demos y simulaciones, que tienen datos ficticios pero el mismo
+   almacén de credenciales del usuario).
+
+5. **Limpieza en `remove`:**
    - Al eliminar una cuenta con `agyswitcher remove <alias>`, se elimina de forma segura su
      slot en Windows Credential Manager (`credman.delete_slot`), previniendo credenciales huérfanas.
 
@@ -164,7 +184,8 @@ proyecto**, no en `agy`:
 
 Como solo hay una sesión, `agy -p /usage` siempre informa de la cuota **de la cuenta con
 sesión iniciada**. AgySwitcher guarda ese informe en la cuenta cuyo email coincide con el
-del informe (`_report_owner`), aunque no sea la activa; `add` solo consulta la cuota si la
+del informe (`_report_owner`), aunque no sea la activa. El email del informe sale de
+`credman.get_active_email()` (la sesión que `agy` usa de verdad) y, si no hay, de los logs; `add` solo consulta la cuota si la
 sesión es de la cuenta que se registra, y `list --refresh-all` no puede recorrer cuentas
 (equivale a `--live`).
 

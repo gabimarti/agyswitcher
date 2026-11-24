@@ -11,6 +11,16 @@ Todos los cambios relevantes de AgySwitcher se documentan en este fichero.
   CLI, y las utilidades de Windows (`tasklist`, `taskkill`) se llaman por su ruta completa.
 - Los ID de modelo preferido se validan: `models --set` rechaza valores no válidos y `run`
   ignora (con aviso) uno no válido guardado en `config.json`.
+- Un slot solo se activa si su email coincide con el de su cuenta, y tras escribirlo se
+  comprueba que la sesión de `agy` es la esperada. La sesión saliente se guarda en el slot
+  de la cuenta a la que pertenece de verdad (antes, con el estado desfasado, podía acabar en
+  el slot de otra cuenta). Las cuentas sin email ya no usan la conmutación instantánea.
+- El cambio guiado solo se registra si el Administrador de credenciales confirma la cuenta
+  (los registros de `agy` quedan como respaldo).
+- La cuenta de la sesión de `agy` se toma primero del Administrador de credenciales, también
+  para atribuir la cuota. Los eventos de inicio de sesión de los registros solo cuentan si
+  son líneas de log de `agy` (un texto que los imite no vale).
+- `add` borra un slot antiguo con el mismo alias que sea de otra sesión.
 
 ### Añadido
 
@@ -18,6 +28,13 @@ Todos los cambios relevantes de AgySwitcher se documentan en este fichero.
   la crea con la ruta de Antigravity CLI (respetando una que ya tengas) y la borra al
   desinstalar.
 - `doctor` muestra de dónde sale el agy que se usa y avisa si `AGYSWITCHER_AGY` ya no es válida.
+- Con `agy` o el IDE de Antigravity abiertos, el cambio instantáneo de cuenta explica cómo
+  cerrarlos y pregunta (reintentar, continuar o abortar); `--force` en `set-active` y
+  `rotate` para no preguntar.
+- Comando `slots` (`list`, `clean`, `clean --all`) para ver y limpiar las sesiones guardadas.
+  `doctor` muestra cuántas cuentas tienen slot y avisa de slots huérfanos o de otra cuenta.
+- El desinstalador recuerda que los slots siguen en el Administrador de credenciales y
+  cómo borrarlos.
 
 ### Corregido
 
@@ -27,7 +44,7 @@ Todos los cambios relevantes de AgySwitcher se documentan en este fichero.
   cuenta registrada (y lo mantienen con el token más reciente). Al terminar `run`, si la
   sesión es de otra cuenta, se avisa de ejecutar `sync`.
 - Si tras un inicio de sesión verificado no se puede guardar el slot, AgySwitcher lo avisa
-  en lugar de ignorarlo.
+  en lugar de ignorarlo. `remove` también avisa si no puede borrar el slot.
 
 ## [1.5.0] - 2026-11-23
 

@@ -31,9 +31,18 @@ from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 
+GLOG_LINE_PREFIX = r"^[IWEF]\d{4} \d{2}:\d{2}:\d{2}(?:\.\d+)?\s+(?:\d+\s+)?[\w.\-]+:\d+\]\s+"
+"""Cabecera de una línea de log de agy (formato glog: nivel, fecha, hora, hilo, fichero:línea).
+
+Anclar los patrones a ella evita que un texto cualquiera de la conversación, copiado en el
+log como dato, se tome por un evento de agy."""
+
+EMAIL_CAPTURE = r"([\w.+\-]+@[\w\-]+(?:\.[\w\-]+)+)"
+"""Grupo de captura de un email (solo ASCII al compilar con re.ASCII)."""
+
 _LOGIN_EVENT_PATTERN = re.compile(
-    r"OAuth:\s+authenticated successfully as\s+([\w.+\-]+@[\w\-]+(?:\.[\w\-]+)+)",
-    re.IGNORECASE,
+    GLOG_LINE_PREFIX + r"(?:consumer)?OAuth:\s+authenticated successfully as\s+" + EMAIL_CAPTURE,
+    re.IGNORECASE | re.ASCII | re.MULTILINE,
 )
 """Evento que agy escribe al completar un inicio de sesión (también 'consumerOAuth:')."""
 

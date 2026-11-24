@@ -164,6 +164,8 @@ agyswitcher set-active personal
 Si la cuenta destino ya dispone de slot guardado en Windows Credential Manager (mostrado con
 `[slot]` en `agyswitcher list`), el cambio se realiza **al instante**: AgySwitcher promueve su
 sesión a la activa de `agy` sin necesidad de abrir el navegador ni ejecutar `/logout`.
+**Sal antes de `agy` con `/exit`** (y cierra el IDE de Antigravity si lo usas): si queda una
+sesión abierta, AgySwitcher te avisa y te pregunta antes de cambiar.
 
 Si la cuenta no tiene slot guardado aún (o si la sesión expiró), AgySwitcher inicia el
 **cambio guiado**:

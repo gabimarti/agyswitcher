@@ -11,7 +11,7 @@ Todas las órdenes muestran su ayuda con `--help` (por ejemplo, `agyswitcher add
 | [`status`](#status) | Estado detallado de la cuenta activa |
 | [`usage`](#usage) | Cuota y sesión en vivo |
 | [`dashboard`](#dashboard) | Panel de control en la terminal |
-| [`set-active`](#set-active) | Cambiar a otra cuenta (cambio guiado) |
+| [`set-active`](#set-active) | Cambiar a otra cuenta (instantáneo o guiado) |
 | [`rotate`](#rotate) | Cambiar de pool o a la siguiente cuenta con cuota |
 | [`sync`](#sync) | Alinear la cuenta activa con la sesión real de `agy` |
 | [`run`](#run) | **Flujo principal:** ejecutar `agy` con supervisión y detección de cuota |
@@ -20,6 +20,7 @@ Todas las órdenes muestran su ayuda con `--help` (por ejemplo, `agyswitcher add
 | [`init`](#init) | Preparar un proyecto para continuar entre cuentas y agentes |
 | [`handoff`](#handoff) | Instrucciones para guardar y retomar el trabajo |
 | [`config`](#config) | Ajustes: umbral de cuota baja y copia al portapapeles |
+| [`slots`](#slots) | Ver o limpiar las sesiones guardadas de tus cuentas |
 | [`doctor`](#doctor) | Diagnóstico de la instalación |
 
 ---
@@ -111,11 +112,20 @@ agyswitcher set-active trabajo --timeout 600
 | Opción | Descripción |
 | :--- | :--- |
 | `--timeout <segundos>` | Tiempo máximo de espera del inicio de sesión (por defecto 300). |
+| `--force`, `-f` | No preguntar si hay sesiones de `agy` abiertas (cambio instantáneo). |
 
 Si la cuenta destino dispone de slot guardado en Windows Credential Manager (`[slot]` en `list`),
-el cambio es inmediato. Si no tiene slot o la sesión caducó, se realiza el cambio guiado:
+el cambio es inmediato. Antes, AgySwitcher comprueba que no haya `agy` ni el IDE de
+Antigravity abiertos: una sesión abierta sigue con la cuenta anterior y, al renovar su token,
+la vuelve a guardar y deshace el cambio. Si los hay, te explica cómo cerrarlos y te pregunta
+si quieres **[R]eintentar** (vuelve a comprobar), **[C]ontinuar igualmente** o **[A]bortar**
+(con Intro). También guarda la sesión saliente en el slot de la cuenta a la que pertenece
+realmente (por su email), aunque AgySwitcher tuviera otra cuenta como activa.
+
+Si no tiene slot o la sesión caducó, se realiza el cambio guiado:
 te muestra el email; en `agy` ejecutas `/logout` e inicias sesión con él; AgySwitcher
-lo verifica, guarda su slot para futuros cambios instantáneos, registra el cambio, consulta
+lo verifica en los registros de `agy` y en el Administrador de credenciales, guarda su slot
+para futuros cambios instantáneos, registra el cambio, consulta
 la cuota de la nueva cuenta y te muestra la instrucción para retomar el proyecto. Si es la
 cuenta que ya está activa, no pide nada.
 
@@ -134,8 +144,8 @@ muestra la antigüedad del dato y el reinicio previsto de cada cuenta, y te sugi
 comprobar primero (ver [Conceptos](conceptos.md#cuota-consultada-y-cuota-guardada)). Al
 terminar el cambio de cuenta consulta la cuota de la nueva cuenta.
 
-Con un alias (`agyswitcher rotate trabajo`) cambia a esa cuenta. Admite `--timeout` como
-`set-active`.
+Con un alias (`agyswitcher rotate trabajo`) cambia a esa cuenta. Admite `--timeout` y
+`--force` como `set-active`.
 
 ## sync
 
@@ -286,6 +296,32 @@ agyswitcher config auto-copy on        # activar copia al portapapeles
 Un proyecto puede tener su propio umbral en `.agyswitcher.toml`, que tiene prioridad sobre
 el global (ver [Continuidad](continuidad.md#aviso-de-cuota-baja)).
 
+## slots
+
+Muestra las sesiones guardadas (slots) de tus cuentas en el Administrador de credenciales de
+Windows, con el email de cada una (nunca los tokens), y qué cuentas aún no tienen slot.
+
+```powershell
+agyswitcher slots              # lista los slots y su estado
+agyswitcher slots clean        # borra los que sobran (tras confirmar)
+agyswitcher slots clean --all  # borra todos
+```
+
+| Estado | Significa |
+| :--- | :--- |
+| correcto | El slot es de su cuenta: el cambio a ella es instantáneo. |
+| sin cuenta registrada | Quedó de una cuenta que ya no está en AgySwitcher. |
+| no es de su cuenta | Su sesión es de otro email: AgySwitcher no lo usará. |
+
+`clean` borra los slots «sin cuenta registrada» y «no es de su cuenta»; con `--all`, todos.
+Después, el primer cambio a cada cuenta borrada vuelve a pedir el navegador. La sesión actual
+de `agy` (`gemini:antigravity`) no se toca nunca.
+
+| Opción | Descripción |
+| :--- | :--- |
+| `--all` | Con `clean`: borrar todos los slots. |
+| `--force`, `-f` | No pedir confirmación. |
+
 ## doctor
 
 Revisa en un solo paso que todo esté en orden y explica cómo arreglar lo que no lo esté:
@@ -293,7 +329,10 @@ Revisa en un solo paso que todo esté en orden y explica cómo arreglar lo que n
 - Qué `agy` se usa, de dónde sale (`AGYSWITCHER_AGY`, `PATH` o ruta de instalación) y
   su versión.
 - Carpeta de datos, ajustes, cuentas registradas (y si alguna no tiene email) y estado.
-- Cuenta activa y si coincide con la sesión que `agy` tiene iniciada.
+- Cuenta activa y si coincide con la sesión que `agy` tiene iniciada (la del Administrador
+  de credenciales y, si no hay, la de sus registros).
+- Slots de sesión: cuántas cuentas tienen slot, cuáles no, y slots huérfanos o de otra
+  cuenta (se limpian con [`slots clean`](#slots)).
 - Antigüedad de los datos de cuota y cuentas agotadas cuyo reinicio ya pasó.
 - Procesos de `agy` abiertos.
 - Si la carpeta actual está preparada con `agyswitcher init` (`AGENTS.md` y `dev_mem/`) y

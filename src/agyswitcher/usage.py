@@ -24,9 +24,10 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 
+from agyswitcher.credman import CredManError, get_active_email
 from agyswitcher.models import AccountQuotaInfo, AppState, is_valid_email
 from agyswitcher.runner import RunnerError, find_agy_executable, run_captured, sanitize_line
-from agyswitcher.session import read_log_tail
+from agyswitcher.session import EMAIL_CAPTURE, GLOG_LINE_PREFIX, read_log_tail
 
 DEFAULT_QUOTA_TTL_SECONDS: float = 180.0
 """Tiempo por defecto (segundos) de validez de las métricas de cuota antes de considerarlas obsoletas (3 min)."""
@@ -63,10 +64,26 @@ _PERCENT_PATTERN = re.compile(r"(\d{1,3})%")
 _TIMESTAMP_PATTERN = re.compile(r"\b(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z?)\b")
 
 _EMAIL_AUTH_PATTERNS = [
-    re.compile(r"applyAuthResult:\s+email=([\w\.\-\+]+@[\w\.\-]+)", re.IGNORECASE),
-    re.compile(r"OAuth:\s+authenticated successfully as\s+([\w\.\-\+]+@[\w\.\-]+)", re.IGNORECASE),
-    re.compile(r"Cache\(userInfo\).*?([\w\.\-\+]+@[\w\.\-]+)", re.IGNORECASE),
+    re.compile(
+        GLOG_LINE_PREFIX + r"applyAuthResult:\s+email=" + EMAIL_CAPTURE,
+        re.IGNORECASE | re.ASCII,
+    ),
+    re.compile(
+        GLOG_LINE_PREFIX
+        + r"(?:consumer)?OAuth:\s+authenticated successfully as\s+"
+        + EMAIL_CAPTURE,
+        re.IGNORECASE | re.ASCII,
+    ),
 ]
+"""Eventos de inicio de sesión de agy, anclados a la cabecera glog de la línea."""
+
+
+def _session_email_from_credman() -> str | None:
+    """Email de la sesión guardada en Credential Manager (fuente de verdad), o None."""
+    try:
+        return get_active_email()
+    except CredManError:
+        return None
 
 
 def detect_active_email(
@@ -351,7 +368,7 @@ def fetch_usage(
     combined_output = f"{proc.stdout}\n{proc.stderr}".strip()
     sanitized_output = sanitize_line(combined_output)
 
-    active_email = detect_active_email()
+    active_email = _session_email_from_credman() or detect_active_email()
     report = parse_usage_output(proc.stdout, active_email=active_email)
 
     if proc.returncode != 0:

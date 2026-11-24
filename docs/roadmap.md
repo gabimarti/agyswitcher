@@ -55,7 +55,9 @@ flowchart LR
   conmutar cuentas al instante sin abrir el navegador y protegiendo rotaciones recientes de tokens;
   si una cuenta no tiene slot o la sesión ha caducado, recurre automáticamente al cambio guiado
   y verificado en navegador. El slot también se guarda si inicias sesión directamente en `agy`
-  (lo detectan `list`, `status` y `run`). `remove` limpia de forma segura el slot asociado. Si el pool en uso se
+  (lo detectan `list`, `status` y `run`). Un slot solo se usa si es de su cuenta, y con `agy`
+  abierto se pide confirmación antes de cambiar; `slots` lista y limpia las sesiones guardadas.
+  `remove` limpia de forma segura el slot asociado. Si el pool en uso se
   agota y el otro está libre, cambia de pool sin iniciar sesión.
 - Propuesta de la siguiente cuenta con cuota; si todas figuran agotadas según los datos
   guardados, sugiere cuál comprobar primero (la cuota a veces se restablece antes de tiempo).
@@ -95,7 +97,7 @@ flowchart LR
 - Revisión de seguridad del código y de la integración continua (acciones fijadas por SHA y
   Dependabot).
 - Correcciones de la tercera revisión de seguridad, por fases: la primera (ejecución segura de
-  `agy`) ya está hecha; quedan la integridad de los slots de sesión y el tratamiento de la
+  `agy`) y la segunda (integridad de los slots de sesión) ya están hechas; queda el tratamiento de la
   configuración de proyectos de terceros.
 - Licencia GPL-3.0-or-later.
 
