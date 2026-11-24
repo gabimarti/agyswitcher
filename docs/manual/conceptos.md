@@ -81,6 +81,10 @@ Al ejecutar `agyswitcher set-active <alias>` o `agyswitcher rotate`:
 Si inicias sesión con otra cuenta te avisa y sigue esperando; si cancelas (`Ctrl+C`) o se
 acaba el tiempo, la cuenta activa no cambia.
 
+Si cambias de cuenta directamente en `agy` (`/logout` y `/login`), AgySwitcher guarda el slot
+de esa cuenta en cuanto ve la sesión: al ejecutar `list`, `status`, `sync` o al terminar
+`run`. Hacer `/logout` no invalida el slot que ya tenías guardado de la cuenta anterior.
+
 ## Continuidad del proyecto
 
 Lo que debe sobrevivir a un cambio de cuenta o de agente vive **en tu proyecto**, en

@@ -54,7 +54,8 @@ flowchart LR
   slots de sesión en Windows Credential Manager (`gemini:antigravity:slot:<alias>`) permitiendo
   conmutar cuentas al instante sin abrir el navegador y protegiendo rotaciones recientes de tokens;
   si una cuenta no tiene slot o la sesión ha caducado, recurre automáticamente al cambio guiado
-  y verificado en navegador. `remove` limpia de forma segura el slot asociado. Si el pool en uso se
+  y verificado en navegador. El slot también se guarda si inicias sesión directamente en `agy`
+  (lo detectan `list`, `status` y `run`). `remove` limpia de forma segura el slot asociado. Si el pool en uso se
   agota y el otro está libre, cambia de pool sin iniciar sesión.
 - Propuesta de la siguiente cuenta con cuota; si todas figuran agotadas según los datos
   guardados, sugiere cuál comprobar primero (la cuota a veces se restablece antes de tiempo).

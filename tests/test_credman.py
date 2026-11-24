@@ -23,9 +23,12 @@ from agyswitcher.credman import (
     CredManError,
     CredManNotFoundError,
     CredManPlatformError,
+    SlotCapture,
     alias_from_slot_target,
+    capture_active_slot,
     delete_credential,
     delete_slot,
+    find_alias_for_email,
     get_active_email,
     get_slot_email,
     has_slot,
@@ -570,3 +573,78 @@ def test_low_level_win32_enumerate_errors(monkeypatch: pytest.MonkeyPatch) -> No
     with pytest.raises(CredManError) as exc_info:
         list_slot_targets()
     assert "Win32 Error: 5" in str(exc_info.value)
+
+
+# ---------------------------------------------------------------------------
+# Captura oportunista del slot de la sesión activa
+# ---------------------------------------------------------------------------
+
+_EMAILS = {"uno": "uno@example.com", "dos": "Dos@Example.com", "sin": None}
+
+
+def _set_active(store: dict[str, CredentialData], blob: bytes) -> None:
+    store[ACTIVE_TARGET] = CredentialData(
+        target_name=ACTIVE_TARGET, user_name="antigravity", blob=blob
+    )
+
+
+def test_find_alias_for_email_is_case_insensitive_and_unique() -> None:
+    """Busca el alias por email sin distinguir mayúsculas y rechaza coincidencias ambiguas."""
+    assert find_alias_for_email("dos@example.com", _EMAILS) == "dos"
+    assert find_alias_for_email("nadie@example.com", _EMAILS) is None
+    duplicated = {"a": "x@example.com", "b": "X@example.com"}
+    assert find_alias_for_email("x@example.com", duplicated) is None
+
+
+def test_capture_active_slot_creates_slot_of_session_owner(
+    fake_credman: dict[str, CredentialData],
+) -> None:
+    """Un inicio de sesión hecho en agy crea el slot de la cuenta dueña de la sesión."""
+    blob = _make_blob("dos@example.com")
+    _set_active(fake_credman, blob)
+
+    capture = capture_active_slot(_EMAILS)
+
+    assert capture == SlotCapture(alias="dos", email="dos@example.com", created=True)
+    assert fake_credman[slot_target_name("dos")].blob == blob
+    assert slot_target_name("uno") not in fake_credman
+
+
+def test_capture_active_slot_updates_changed_slot_and_skips_identical(
+    fake_credman: dict[str, CredentialData],
+) -> None:
+    """Actualiza un slot con un token más reciente y no reescribe uno idéntico."""
+    _set_active(fake_credman, _make_blob("uno@example.com", token={"access_token": "viejo"}))
+    capture_active_slot(_EMAILS)
+    newer = _make_blob("uno@example.com", token={"access_token": "nuevo"})
+    _set_active(fake_credman, newer)
+
+    capture = capture_active_slot(_EMAILS)
+
+    assert capture is not None and capture.alias == "uno" and capture.created is False
+    assert fake_credman[slot_target_name("uno")].blob == newer
+    assert capture_active_slot(_EMAILS) is None
+
+
+@pytest.mark.parametrize(
+    "blob",
+    [None, b"no es json", _make_blob("ajena@example.com")],
+    ids=["sin-sesion", "blob-invalido", "cuenta-no-registrada"],
+)
+def test_capture_active_slot_ignores_unusable_sessions(
+    fake_credman: dict[str, CredentialData], blob: bytes | None
+) -> None:
+    """Sin sesión, con un blob inválido o con una cuenta no registrada no se escribe nada."""
+    if blob is not None:
+        _set_active(fake_credman, blob)
+
+    assert capture_active_slot(_EMAILS) is None
+    assert not [t for t in fake_credman if is_slot_target(t)]
+
+
+def test_capture_active_slot_without_credman_returns_none(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Sin Credential Manager disponible (no Windows) no falla: devuelve None."""
+    monkeypatch.setattr("sys.platform", "linux")
+    assert capture_active_slot(_EMAILS) is None

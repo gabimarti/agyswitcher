@@ -49,6 +49,8 @@ from agyswitcher.config import (
 )
 from agyswitcher.credman import (
     CredManError,
+    SlotCapture,
+    capture_active_slot,
     delete_slot,
     has_slot,
     list_slot_aliases,
@@ -356,6 +358,25 @@ def _refresh_active_quota_if_stale(
     return False
 
 
+def _capture_active_slot(accounts: dict[str, Account]) -> SlotCapture | None:
+    """Crea o actualiza el slot de la sesión activa de agy si es de una cuenta registrada.
+
+    Cubre los inicios de sesión hechos directamente en agy (sin el cambio guiado) y mantiene
+    el slot con el token más reciente. Solo avisa al crear un slot nuevo. Un error de
+    Credential Manager no interrumpe el comando que la llama.
+    """
+    try:
+        capture = capture_active_slot({alias: acc.email for alias, acc in accounts.items()})
+    except CredManError:
+        return None
+    if capture is not None and capture.created:
+        console.print(
+            f"[dim]✓ Slot de sesión guardado para '{escape(capture.alias)}': el cambio a esta "
+            "cuenta ya no necesitará el navegador.[/dim]"
+        )
+    return capture
+
+
 def _guided_account_switch(
     target_alias: str,
     target_pool: str,
@@ -427,8 +448,14 @@ def _guided_account_switch(
     result = wait_for_login(target_email, offsets, timeout=timeout, on_other_login=_on_other_login)
 
     if result.status is LoginWaitStatus.VERIFIED:
-        with contextlib.suppress(CredManError):
+        try:
             save_slot_from_active(target_alias, expected_email=target_email)
+        except CredManError as err:
+            console.print(
+                f"[yellow]Sesión verificada, pero no se pudo guardar su slot ({escape(str(err))}). "
+                "El próximo cambio a esta cuenta volverá a pedir el navegador; prueba "
+                "'agyswitcher sync' con esta sesión iniciada.[/yellow]"
+            )
         try:
             return record_rotation(target_alias, target_pool, state)
         except StateError as err:
@@ -1394,6 +1421,8 @@ def list_accounts(
                 with contextlib.suppress(StateError):
                     save_state(state)
 
+    _capture_active_slot(accounts)  # Antes de la tabla, para que muestre ya el [slot].
+
     table = Table(
         title="Cuentas configuradas en AgySwitcher",
         box=box.ROUNDED,
@@ -1560,6 +1589,8 @@ def status(
     external_exhausted_count = len(state.external_quota_exhausted)
     fully_exhausted_count = sum(1 for alias in accounts if state.is_account_fully_exhausted(alias))
     available_count = total_accounts - fully_exhausted_count
+
+    _capture_active_slot(accounts)
 
     active_alias = state.active
     active_account = accounts.get(active_alias) if active_alias else None
@@ -2522,6 +2553,7 @@ def run(
     _refresh_active_quota_if_stale(accounts, state)
 
     _warn_low_quota(accounts, state)
+    _capture_active_slot(accounts)
 
     # Lanzar agy con los argumentos proporcionados y monitorizar cuota en tiempo real
     detector = QuotaDetector(default_pool=state.active_model_group)
@@ -2598,6 +2630,15 @@ def run(
         follow_thread.join(timeout=_LOG_POLL_INTERVAL * 2)
     for log_line in follower.poll():  # Lo escrito justo antes de cerrarse agy.
         _on_log_line(log_line)
+
+    # Si durante la sesión se cambió de cuenta dentro de agy (/logout + /login), se guarda
+    # el slot de la cuenta nueva y se avisa de que el estado ya no refleja la sesión real.
+    capture = _capture_active_slot(accounts)
+    if capture is not None and capture.alias != state.active:
+        console.print(
+            f"[yellow]agy tiene ahora la sesión de '{escape(capture.alias)}'; ejecuta "
+            "'agyswitcher sync' para que AgySwitcher lo refleje.[/yellow]"
+        )
 
     if detected_pools:
         typer.secho(

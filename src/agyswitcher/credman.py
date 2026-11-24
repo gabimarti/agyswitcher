@@ -21,6 +21,7 @@ from __future__ import annotations
 import ctypes
 import json
 import sys
+from collections.abc import Mapping
 from ctypes import wintypes
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -471,6 +472,77 @@ def save_slot_from_active(alias: str, expected_email: str | None = None) -> str:
         persist=active_cred.persist,
     )
     return active_email
+
+
+@dataclass(frozen=True)
+class SlotCapture:
+    """Resultado de 'capture_active_slot' cuando se ha escrito un slot."""
+
+    alias: str
+    """Alias de la cuenta cuyo slot se ha escrito."""
+    email: str
+    """Email de la sesión guardada."""
+    created: bool
+    """True si la cuenta no tenía slot; False si se ha actualizado uno existente."""
+
+
+def find_alias_for_email(email: str, emails_by_alias: Mapping[str, str | None]) -> str | None:
+    """Devuelve el único alias cuyo email coincide (sin distinguir mayúsculas), o None.
+
+    Si varias cuentas comparten el email, devuelve None: no se puede saber de cuál es la sesión.
+    """
+    wanted = email.strip().lower()
+    matches = [
+        alias
+        for alias, acc_email in emails_by_alias.items()
+        if acc_email and acc_email.strip().lower() == wanted
+    ]
+    return matches[0] if len(matches) == 1 else None
+
+
+def capture_active_slot(emails_by_alias: Mapping[str, str | None]) -> SlotCapture | None:
+    """Guarda la sesión activa de agy en el slot de la cuenta registrada a la que pertenece.
+
+    Un inicio de sesión hecho directamente en agy (``/logout`` + ``/login``) no pasa por el
+    cambio guiado, así que su slot no se crea en ese momento. Esta función lo crea (o lo
+    actualiza con el token más reciente) en cuanto AgySwitcher ve la sesión. El dueño se
+    determina por el email de la propia credencial, no por la cuenta activa del estado, para
+    que un slot solo contenga la sesión de su cuenta.
+
+    Args:
+        emails_by_alias: Email registrado de cada alias.
+
+    Returns:
+        Un SlotCapture si se ha escrito el slot; None si no hay sesión válida, no pertenece a
+        una única cuenta registrada, el slot ya era idéntico o no hay Credential Manager.
+
+    Raises:
+        CredManError: Si falla una llamada Win32 de lectura o escritura.
+    """
+    try:
+        active = read_credential(ACTIVE_TARGET)
+    except CredManPlatformError:
+        return None
+    if active is None or not active.is_valid_agy_blob():
+        return None
+    email = active.extract_email()
+    if not email:
+        return None
+    alias = find_alias_for_email(email, emails_by_alias)
+    if alias is None:
+        return None
+
+    target = slot_target_name(alias)
+    current = read_credential(target)
+    if current is not None and current.blob == active.blob:
+        return None
+    write_credential(
+        target_name=target,
+        blob=active.blob,
+        user_name=active.user_name,
+        persist=active.persist,
+    )
+    return SlotCapture(alias=alias, email=email, created=current is None)
 
 
 def promote_slot_to_active(

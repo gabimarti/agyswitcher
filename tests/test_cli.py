@@ -2701,3 +2701,100 @@ def test_credman_slots_full_lifecycle_e2e(monkeypatch: pytest.MonkeyPatch) -> No
     assert "Slot de sesión eliminado de Windows Credential Manager." in res_rem.output
     assert not _fake_has_slot("personal")
     assert _fake_has_slot("trabajo")
+
+
+# ---------------------------------------------------------------------------
+# Captura oportunista del slot (inicios de sesión hechos directamente en agy)
+# ---------------------------------------------------------------------------
+
+
+def _capture_recorder(
+    monkeypatch: pytest.MonkeyPatch, result: object
+) -> list[dict[str, str | None]]:
+    calls: list[dict[str, str | None]] = []
+
+    def _capture(emails_by_alias: dict[str, str | None]) -> object:
+        calls.append(dict(emails_by_alias))
+        return result
+
+    monkeypatch.setattr("agyswitcher.cli.capture_active_slot", _capture)
+    return calls
+
+
+def test_list_captures_slot_of_session_started_in_agy(monkeypatch: pytest.MonkeyPatch) -> None:
+    """list guarda el slot de la sesión iniciada en agy y lo indica al crearlo."""
+    from agyswitcher.credman import SlotCapture
+
+    _two_accounts()
+    calls = _capture_recorder(monkeypatch, SlotCapture("cuenta-2", "dos@example.com", True))
+
+    result = runner.invoke(app, ["list", "--cached"], env={"COLUMNS": "120"})
+
+    assert result.exit_code == 0, result.output
+    assert calls == [{"cuenta-1": "uno@example.com", "cuenta-2": "dos@example.com"}]
+    assert "Slot de sesión guardado para 'cuenta-2'" in result.output
+
+
+def test_status_refreshing_existing_slot_is_silent(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Actualizar un slot que ya existía no muestra ningún mensaje."""
+    from agyswitcher.credman import SlotCapture
+
+    _two_accounts()
+    calls = _capture_recorder(monkeypatch, SlotCapture("cuenta-1", "uno@example.com", False))
+
+    result = runner.invoke(app, ["status"])
+
+    assert result.exit_code == 0, result.output
+    assert len(calls) == 1
+    assert "Slot de sesión guardado" not in result.output
+
+
+def test_capture_errors_do_not_break_commands(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Un error de Credential Manager al capturar no interrumpe el comando."""
+    from agyswitcher.credman import CredManError
+
+    _two_accounts()
+
+    def _fail(_emails: object) -> None:
+        raise CredManError("fallo simulado")
+
+    monkeypatch.setattr("agyswitcher.cli.capture_active_slot", _fail)
+
+    result = runner.invoke(app, ["status"])
+
+    assert result.exit_code == 0, result.output
+
+
+def test_run_warns_when_account_changed_inside_agy(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Si durante run se inició sesión con otra cuenta en agy, se guarda su slot y se avisa."""
+    from agyswitcher.credman import SlotCapture
+
+    _two_accounts()
+    calls = _capture_recorder(monkeypatch, SlotCapture("cuenta-2", "dos@example.com", True))
+    monkeypatch.setattr("agyswitcher.cli.run_agy_process", lambda **_k: 0)
+
+    result = runner.invoke(app, ["run"])
+
+    assert result.exit_code == 0, result.output
+    assert len(calls) == 2  # Antes de lanzar agy y al terminar.
+    assert "agy tiene ahora la sesión de 'cuenta-2'" in result.output
+    assert "agyswitcher sync" in result.output
+
+
+def test_guided_switch_reports_slot_save_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Si no se puede guardar el slot tras un inicio de sesión verificado, se avisa."""
+    from agyswitcher.credman import CredManNotFoundError
+
+    _two_accounts()
+    _login_ok(monkeypatch)
+
+    def _fail(alias: str, expected_email: str | None = None) -> str:
+        raise CredManNotFoundError("sin credencial activa")
+
+    monkeypatch.setattr("agyswitcher.cli.save_slot_from_active", _fail)
+
+    result = runner.invoke(app, ["rotate", "cuenta-2"])
+
+    assert result.exit_code == 0, result.output
+    assert "no se pudo guardar su slot" in result.output
+    assert load_state().active == "cuenta-2"

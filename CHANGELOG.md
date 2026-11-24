@@ -19,6 +19,16 @@ Todos los cambios relevantes de AgySwitcher se documentan en este fichero.
   desinstalar.
 - `doctor` muestra de dónde sale el agy que se usa y avisa si `AGYSWITCHER_AGY` ya no es válida.
 
+### Corregido
+
+- Una cuenta que inicia sesión directamente en agy (`/logout` y `/login`), sin el cambio
+  guiado, se quedaba sin slot y el siguiente cambio a ella volvía a pedir el navegador.
+  Ahora `list`, `status` y `run` guardan el slot de la sesión activa si pertenece a una
+  cuenta registrada (y lo mantienen con el token más reciente). Al terminar `run`, si la
+  sesión es de otra cuenta, se avisa de ejecutar `sync`.
+- Si tras un inicio de sesión verificado no se puede guardar el slot, AgySwitcher lo avisa
+  en lugar de ignorarlo.
+
 ## [1.5.0] - 2026-11-23
 
 Conmutación instantánea de cuentas mediante slots en Windows Credential Manager

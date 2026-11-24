@@ -110,8 +110,21 @@ flowchart TD
      - Sondea los logs hasta detectar `OAuth: authenticated successfully as <email>`.
      - **Captura automática:** Tras verificar el inicio de sesión, guarda automáticamente el
        slot `gemini:antigravity:slot:<destino>` para que los próximos cambios sean instantáneos.
+       Si no puede guardarlo, lo avisa en lugar de ignorarlo.
 
-3. **Limpieza en `remove`:**
+3. **Captura oportunista (`credman.capture_active_slot`):**
+   - `list`, `status` y `run` (antes de lanzar agy y al terminar) copian la sesión activa al
+     slot de la cuenta registrada cuyo email coincide con el `id_token_email` de la credencial
+     (no con `state.active`). Así se crea el slot de una cuenta que inició sesión directamente
+     en agy (`/logout` + `/login`, sin cambio guiado) y se mantiene el slot con el token más
+     reciente. No escribe si el slot ya es idéntico ni si el email no pertenece a una única
+     cuenta registrada.
+   - Si al terminar `run` la sesión es de otra cuenta, avisa de que el estado está desfasado y
+     sugiere `sync`.
+   - Comprobado con cuentas reales (2026-11-24): `/logout` en agy no revoca el token en Google,
+     así que el slot guardado antes de un `/logout` sigue sirviendo para volver a esa cuenta.
+
+4. **Limpieza en `remove`:**
    - Al eliminar una cuenta con `agyswitcher remove <alias>`, se elimina de forma segura su
      slot en Windows Credential Manager (`credman.delete_slot`), previniendo credenciales huérfanas.
 
